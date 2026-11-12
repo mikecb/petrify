@@ -3,6 +3,7 @@ name = "petrify"
 version = "0.1.0"
 edition = "2024"
 description = "Turn observed application behaviour (CloudTrail, flow logs, syscall traces) into least-privilege policy"
+license = "MIT"
 readme = "README.md"
 repository = "https://github.com/mikecb/petrify"
 

@@ -206,3 +206,7 @@ runs. It attaches static Linux binaries (x86_64, aarch64), macOS binaries
 
 A pull request that changes the release workflow runs the builds as a dry
 run, without publishing.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

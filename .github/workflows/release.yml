@@ -80,7 +80,7 @@ jobs:
           "$bin" --version
           "$bin" generate tests/fixtures/strace.log --arch x86_64 > /dev/null
       - name: Package
-        run: tar -czf "petrify-$TARGET.tar.gz" README.md -C "target/$TARGET/release" petrify
+        run: tar -czf "petrify-$TARGET.tar.gz" README.md LICENSE -C "target/$TARGET/release" petrify
       - uses: actions/upload-artifact@v7
         with:
           name: petrify-${{ matrix.target }}
