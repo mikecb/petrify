@@ -3,11 +3,13 @@
 Point petrify at a log of what an application did, and it writes a policy that
 lets the application do that and nothing else.
 
-| Log                                   | Shows                          | Policy written        |
-| ------------------------------------- | ------------------------------ | --------------------- |
-| AWS CloudTrail                        | API calls and their resources  | IAM policy            |
-| VPC Flow Logs, or any flow CSV        | who connects to whom           | security group rules  |
-| `strace` output, Linux audit records  | system calls                   | seccomp profile       |
+| Log                                                   | Shows                         | Policy written                                              |
+| ----------------------------------------------------- | ----------------------------- | ----------------------------------------------------------- |
+| AWS CloudTrail                                        | API calls and their resources | IAM policy                                                  |
+| Google Cloud Audit Logs                               | permissions checked           | IAM custom role                                             |
+| Azure Activity Log                                    | Resource Manager operations   | custom role                                                 |
+| Flow logs from AWS, Google Cloud or Azure; flow CSVs  | who connects to whom          | security group, VPC firewall rules, or NSG rules            |
+| `strace` output, Linux audit records                  | system calls                  | seccomp profile                                             |
 
 ```console
 $ petrify show cloudtrail/ --subject orders-api
@@ -26,10 +28,17 @@ petrify: wrote IAM policy to policy.json for arn:aws:iam::111122223333:role/orde
 
 ## Status
 
-Version 0.1. The seccomp path has been run end to end against a real container
-runtime. The IAM and security group paths are tested only against fixture
-logs so far: read what they generate before applying it. [ROADMAP.md](ROADMAP.md)
-has what comes next.
+Version 0.2. How far each path has been tested:
+
+- **Seccomp**: run end to end against a real container runtime.
+- **AWS** (IAM policy, security group): fixture logs only.
+- **Google Cloud and Azure**: fixture logs only. Their formats were checked
+  against the vendors' documentation, published API definitions and public
+  sample logs, but petrify has not read a log from a real account, and the
+  commands below that apply its output are untested.
+
+Read what it generates before applying it. [ROADMAP.md](ROADMAP.md) has what
+comes next.
 
 ## Build
 
@@ -54,13 +63,23 @@ is detected; `--format` overrides it.
 
 **One subject at a time.** A log usually covers several actors, and a policy
 that blends them is too broad for each. petrify calls the actor the *subject*:
-the IAM principal, the network interface, or the executable. With several in a
-log, `show` lists them and `generate` refuses until you pick with `--subject`
+the principal, the network interface or VM, or the executable. With several in
+a log, `show` lists them and `generate` refuses until you pick with `--subject`
 (a substring, or a glob such as `'*'`; repeatable).
 
 Notes about guesses and gaps go to stderr, so stdout is always just the policy.
 
-### IAM policy from CloudTrail
+### Permissions from cloud audit logs
+
+Each cloud's audit log leads to that cloud's policy; permission names are not
+translated between clouds. Common to all three:
+
+- Calls that were denied while the log was recorded are shown but not granted,
+  unless `--include-denied`.
+- The policy grants what was *used*. Compare it with what the identity has now
+  to see what can go.
+
+#### AWS: CloudTrail to an IAM policy
 
 ```sh
 petrify generate AWSLogs/ -s my-role -o policy.json
@@ -77,13 +96,92 @@ aws accessanalyzer validate-policy --policy-type IDENTITY_POLICY \
 - An action that touched more than `--max-resources` resources (default 10)
   has its deepest path segments replaced by wildcards until it fits:
   a thousand keys under `uploads/2026/` become `uploads/2026/*`.
-- Calls that were denied while the log was recorded are shown but not granted,
-  unless `--include-denied`.
 
-### Security group from flow logs
+#### Google Cloud: audit logs to a custom role
+
+```sh
+gcloud logging read 'logName:"cloudaudit.googleapis.com"' \
+    --project=shop-prod --freshness=30d --format=json > audit.json
+petrify generate audit.json -s orders-api@ -o role.json
+gcloud iam roles create ordersApi --project=shop-prod --file=role.json
+```
+
+- An audit log entry lists the permissions that were checked and whether each
+  was granted, so nothing is translated: the role's `includedPermissions` are
+  the ones the log recorded.
+- A role is only a list of permissions. Where it applies is decided by where
+  you bind it, so bind it on the resources `show` lists, not project-wide.
+- Also reads the JSON Lines a log sink writes to Cloud Storage, and rows
+  exported from BigQuery.
+- Data Access audit logs are off by default for most services. Without them
+  the log shows configuration changes but few of an application's reads and
+  writes, and the role will be too small.
+- GKE audit logs also list Kubernetes API verbs (`io.k8s.*`). Kubernetes
+  RBAC grants those, so they are left out of the role and noted.
+- Some permissions cannot be put in a custom role; `gcloud` rejects those.
+
+#### Azure: Activity Log to a custom role
+
+```sh
+az monitor activity-log list --offset 30d --max-events 100000 > activity.json
+petrify generate activity.json -s orders-api-deployer -o role.json
+az role definition create --role-definition @role.json
+```
+
+(`--max-events` defaults to 50.)
+
+The Activity Log is a narrower record than the other two, and a role built
+from it is a starting point, not a finished role:
+
+- It records writes, deletes and actions. **Reads are not recorded**, so the
+  role has none: add the `*/read` actions the application needs.
+- It covers the control plane only. Reading a blob or a secret is a data
+  action, logged by the resource itself, and is not in the role.
+- A request refused for lack of permission produces no record, so nothing is
+  ever shown as denied.
+
+`AssignableScopes` lists the resource groups the actions touched, or their
+subscriptions when there are more than `--max-resources` of them. Also reads
+the Activity Log as exported to Event Hubs or a storage account.
+
+### Firewall rules from flow logs
 
 ```sh
 petrify generate flowlogs/ -s eni-0abc123 -o sg.json
+```
+
+The traffic model is the same for every cloud, and so is most of the work:
+deciding who opened each connection, and how exactly to name the peers.
+
+**Who opened the connection.** A stateful rule allows the opening of a
+conversation; replies come for free. Azure flow logs record connections, so
+they say. AWS and Google Cloud flow logs record each direction separately,
+and petrify decides, per conversation, in this order:
+
+1. TCP flags, when the log has them (AWS custom format with `tcp-flags`).
+2. Port numbers: a port below the ephemeral range is the server.
+3. Traffic seen in one direction only: the receiver is the server.
+4. Whichever side sent first.
+
+If none of these settles it, both directions are allowed and a note says so.
+
+**Whose traffic it is.** Google Cloud and Azure logs say which end is the
+monitored VM or interface. For AWS, the interface's address is inferred as
+the one present in every record. When that fails (a one-conversation log, a
+CSV from a router), pass `--local CIDR`.
+
+**Naming the peers.** Peers are listed exactly until a rule has more than
+`--max-peers` (default 8); then prefixes widen step by step. Private addresses
+never widen past their private range. A rule that ends up at `0.0.0.0/0` is
+noted. Rejected flows are shown and never allowed.
+
+The rules are written in the dialect of the cloud the log came from. `--policy`
+overrides that, so a flow CSV or one cloud's flow log can become another
+cloud's rules: `--policy gcp-firewall`, `azure-nsg` or `aws-security-group`.
+
+#### AWS: security group
+
+```sh
 aws ec2 authorize-security-group-ingress --group-id sg-... \
     --ip-permissions "$(jq -c .IpPermissions sg.json)"
 aws ec2 authorize-security-group-egress --group-id sg-... \
@@ -91,28 +189,76 @@ aws ec2 authorize-security-group-egress --group-id sg-... \
 ```
 
 A new security group allows all egress; revoke that rule or the egress rules
-above constrain nothing.
+above constrain nothing. Reads the default flow log format and custom formats
+that start with a header line (as delivered to S3).
 
-Flow records do not say who opened a connection, and a stateful rule needs to
-know. petrify decides, per conversation, in this order:
+#### Google Cloud: VPC firewall rules
 
-1. TCP flags, when the log has them (custom format with `tcp-flags`).
-2. Port numbers: a port below the ephemeral range is the server.
-3. Traffic seen in one direction only: the receiver is the server.
-4. Whichever side sent first.
+```sh
+gcloud logging read 'log_id("compute.googleapis.com/vpc_flows")' \
+    --project=shop-prod --freshness=7d --format=json > flows.json
+petrify generate flows.json -s orders-api -o firewall.json
+```
 
-If none of these settles it, both directions are allowed and a note says so.
+The output is a list of `Firewall` resources for the Compute Engine API.
 
-- The application's own address is inferred as the one present in every record
-  of the interface. When that fails (a one-conversation log, a CSV from a
-  router), pass `--local CIDR`.
-- Peers are listed exactly until a rule has more than `--max-peers` (default
-  8); then prefixes widen step by step. Private addresses never widen past
-  their private range. A rule that ends up at `0.0.0.0/0` is noted.
-- Rejected flows are shown and never allowed.
-- Supported: the default flow log format, custom formats that start with a
-  header line (as delivered to S3), and CSV with a header naming source,
-  destination, ports and protocol (`nfdump -o csv` and similar).
+- The subject is the VM that reported the flow.
+- The rules name no network and no target, because the flows cannot say which
+  instances they are for. As written they would apply to every instance on
+  the default network. Add `network` and `targetTags` or
+  `targetServiceAccounts` to each before creating them:
+
+  ```sh
+  jq -c '.[] | .network = "projects/shop-prod/global/networks/prod"
+             | .targetTags = ["orders-api"]' firewall.json |
+  while read -r rule; do
+    curl -sS -X POST -d "$rule" -H "Content-Type: application/json" \
+      -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+      "https://compute.googleapis.com/compute/v1/projects/shop-prod/global/firewalls"
+  done
+  ```
+
+- Google Cloud allows all egress unless a rule denies it, so the list ends
+  with deny-all egress rules at priority 65534. Allow rules already on the
+  network at a higher priority still apply.
+- VPC Flow Logs do not mark denied traffic. Inbound packets a rule denied are
+  simply absent, but outbound packets are logged before egress rules apply,
+  so an outbound attempt that was refused looks like any other flow and is
+  allowed by the generated rules. Check the egress rules against what the
+  application should reach.
+
+#### Azure: network security group rules
+
+```sh
+petrify generate PT1H.json -s 00224800AABB -o nsg.json
+```
+
+The output is a list of security rules, each a `name` and `properties` as in
+an ARM template's `securityRules`.
+
+```sh
+NSG=/subscriptions/.../resourceGroups/orders/providers/Microsoft.Network/networkSecurityGroups/orders
+jq -c '.[]' nsg.json | while read -r rule; do
+  az rest --method put --body "$(jq -c '{properties}' <<<"$rule")" \
+    --url "https://management.azure.com$NSG/securityRules/$(jq -r .name <<<"$rule")?api-version=2023-09-01"
+done
+```
+
+- Reads virtual network flow logs and the older NSG flow logs (versions 1 and
+  2). The subject is the interface's MAC address.
+- Each direction ends with a deny-all rule at priority 4096. That overrides
+  the default rules that allow all traffic within the virtual network and all
+  outbound traffic to the internet, which is the point, but check that what
+  the platform itself needs was in the recording (load balancer health
+  probes from 168.63.129.16, for one).
+- A security rule can only name TCP, UDP, ICMP, ESP and AH; other protocols
+  are left out and noted.
+
+#### Other flow sources
+
+CSV with a header naming source, destination, ports and protocol (`nfdump -o
+csv` and similar) is read as flows with no cloud of its own: the default
+output is an AWS security group, and `--policy` picks another.
 
 ### Seccomp profile from strace or audit records
 
@@ -163,14 +309,22 @@ needs is for you to judge.
   Record for long enough, then roll out gradually: `SCMP_ACT_LOG` for seccomp;
   for IAM and security groups, apply to one instance and run petrify on the
   new logs, where denied calls and rejected flows show up by name.
-- **CloudTrail omits things.** Data events (S3 objects, Lambda invokes,
-  DynamoDB items) appear only if the trail records them. Permissions that are
-  checked without an API call of their own, `iam:PassRole` above all, never
-  appear. The event-to-action mapping is maintained by hand and incomplete.
-- **No conditions.** IAM policies carry no `Condition` blocks, security groups
-  reference CIDR ranges rather than other groups, and seccomp rules do not
-  inspect arguments.
-- **AWS only** for the cloud and network policies, for now.
+- **Audit logs omit things.**
+  - CloudTrail records data events (S3 objects, Lambda invokes, DynamoDB
+    items) only if the trail is set to, and never records permissions that
+    are checked without an API call of their own, `iam:PassRole` above all.
+    Its event-to-action mapping here is maintained by hand and incomplete.
+  - Google Cloud records most reads and writes of data only where Data Access
+    audit logs are enabled.
+  - The Azure Activity Log records no reads and no data-plane operations at
+    all.
+- **No conditions.** IAM policies carry no `Condition` blocks, Google Cloud
+  roles come without the bindings that scope them, firewall rules reference
+  address ranges rather than tags, groups or service accounts, and seccomp
+  rules do not inspect arguments.
+- **Azure flow tuples are read as connections.** In every documented sample
+  the tuple's source is the end that opened the connection, and petrify
+  relies on that, but the documentation does not state it as a rule.
 
 [ROADMAP.md](ROADMAP.md) lists which of these are meant to change.
 
@@ -178,17 +332,18 @@ needs is for you to judge.
 
 ```
 src/sources/    one module per log format -> normalised events
-src/cloud.rs    API calls   -> IAM policy
-src/network.rs  flows       -> security group
-src/syscalls.rs syscalls    -> seccomp profile
-src/cli.rs      argument parsing, subject selection, output
+src/cloud/      API calls -> IAM policy (aws), custom role (gcp, azure)
+src/network/    flows     -> security group (aws), firewall rules (gcp), NSG rules (azure)
+src/syscalls.rs syscalls  -> seccomp profile
+src/cli.rs      argument parsing, subject and policy selection, output
 tests/          end-to-end tests against tests/fixtures/
 ```
 
 A new log format is a module in `src/sources/` with `sniff` and `parse`, a
 `Format` variant, and one arm in `Collector::feed`. A new policy for an
 existing kind of behaviour (say, Kubernetes NetworkPolicy from flows) is a
-second `policy` function beside the first.
+module beside the others in `src/cloud/` or `src/network/` and a `Policy`
+variant.
 
 `src/syscall_tables.rs` is generated from kernel headers by
 `scripts/gen_syscall_tables.py` (needs `linux-libc-dev` and `cpp`).

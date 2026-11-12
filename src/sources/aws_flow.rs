@@ -102,6 +102,7 @@ fn flow<'a>(field: &dyn Fn(&str) -> Option<&'a str>) -> Option<Flow> {
         accepted: field("action").unwrap_or("ACCEPT") == "ACCEPT",
         start,
         initiator: initiator(proto, field("tcp-flags")),
+        local: None,
     })
 }
 

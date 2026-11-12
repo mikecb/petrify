@@ -9,6 +9,7 @@ use std::io::{self, BufRead};
 use csv::{ReaderBuilder, StringRecord};
 
 use crate::events::{Flow, Notes};
+use crate::sources::timestamp;
 
 const SRC: &[&str] = &[
     "sa",
@@ -150,6 +151,7 @@ fn flow(row: &StringRecord, columns: &Columns) -> Option<Flow> {
             .and_then(timestamp)
             .unwrap_or(0.0),
         initiator: None,
+        local: None,
     })
 }
 
@@ -164,35 +166,6 @@ fn protocol(text: &str) -> Option<u8> {
         "sctp" => 132,
         number => number.parse().ok()?,
     })
-}
-
-/// Seconds since the epoch, from a number or `YYYY-MM-DD HH:MM:SS[.fff]`.
-/// Only used to order flows, so time zones do not matter.
-fn timestamp(text: &str) -> Option<f64> {
-    if let Ok(number) = text.parse::<f64>() {
-        return Some(number);
-    }
-    let (date, time) = text.split_once([' ', 'T'])?;
-    let mut date = date.split('-').map(|part| part.parse::<i64>().ok());
-    let (year, month, day) = (date.next()??, date.next()??, date.next()??);
-    let mut time = time
-        .trim_end_matches('Z')
-        .split(':')
-        .map(|part| part.parse::<f64>().ok());
-    let (hour, minute, second) = (
-        time.next()??,
-        time.next()??,
-        time.next().flatten().unwrap_or(0.0),
-    );
-
-    // Days since 1970-01-01 (Howard Hinnant's days_from_civil).
-    let year = if month <= 2 { year - 1 } else { year };
-    let era = year.div_euclid(400);
-    let year_of_era = year.rem_euclid(400);
-    let day_of_year = (153 * ((month + 9) % 12) + 2) / 5 + day - 1;
-    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
-    let days = era * 146_097 + day_of_era - 719_468;
-    Some(days as f64 * 86_400.0 + hour * 3600.0 + minute * 60.0 + second)
 }
 
 #[cfg(test)]
@@ -223,14 +196,5 @@ total,,,,,
         assert!(flows[1].start > flows[0].start);
         assert_eq!(notes.len(), 1);
         assert!(!sniff("a,b,c\n1,2,3\n"));
-    }
-
-    #[test]
-    fn timestamps_order_correctly() {
-        assert_eq!(timestamp("1970-01-01 00:00:00"), Some(0.0));
-        assert_eq!(timestamp("2026-11-01T12:00:00Z"), Some(1_793_534_400.0));
-        assert_eq!(timestamp("2026-11-01 12:00:00.250"), Some(1_793_534_400.25));
-        assert!(timestamp("2024-02-29 00:00:00") < timestamp("2024-03-01 00:00:00"));
-        assert_eq!(timestamp("yesterday"), None);
     }
 }

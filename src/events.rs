@@ -27,13 +27,25 @@ impl From<std::io::Error> for Error {
     }
 }
 
-/// One cloud API call, already translated to IAM vocabulary.
+/// The cloud whose permission vocabulary an API call is written in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Provider {
+    Aws,
+    Gcp,
+    Azure,
+}
+
+/// One cloud API call, already translated to the provider's permission
+/// vocabulary.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ApiCall {
     pub subject: String,
-    pub service: String,
+    /// The permission exercised, as the provider's policies name it:
+    /// `s3:GetObject`, `storage.objects.get`,
+    /// `Microsoft.Storage/storageAccounts/write`.
     pub action: String,
-    /// ARNs the call touched, or `["*"]` when the log does not say.
+    /// What the call touched (ARNs, resource names, scopes), or `["*"]`
+    /// when the log does not say.
     pub resources: Vec<String>,
     pub denied: bool,
 }
@@ -54,6 +66,9 @@ pub struct Flow {
     /// `Some(true)` when the log knows `src` opened the conversation,
     /// `Some(false)` when it knows `src` is answering, `None` otherwise.
     pub initiator: Option<bool>,
+    /// The end of the flow that is the subject's own address, when the log
+    /// says which it is. Otherwise it is inferred from the subject's flows.
+    pub local: Option<IpAddr>,
 }
 
 /// One system call.

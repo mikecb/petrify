@@ -1,0 +1,335 @@
+[
+ {
+  "insertId": "a0001",
+  "logName": "projects/shop-prod/logs/cloudaudit.googleapis.com%2Fdata_access",
+  "protoPayload": {
+   "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+   "authenticationInfo": {
+    "principalEmail": "orders-api@shop-prod.iam.gserviceaccount.com"
+   },
+   "authorizationInfo": [
+    {
+     "resource": "projects/_/buckets/orders-data/objects/invoices/2026/0000.pdf",
+     "permission": "storage.objects.get",
+     "granted": true
+    }
+   ],
+   "methodName": "storage.objects.get",
+   "serviceName": "storage.googleapis.com",
+   "status": {}
+  },
+  "resource": {
+   "type": "audited_resource",
+   "labels": {
+    "project_id": "shop-prod"
+   }
+  },
+  "severity": "INFO",
+  "timestamp": "2026-11-01T12:00:01Z"
+ },
+ {
+  "insertId": "a0002",
+  "logName": "projects/shop-prod/logs/cloudaudit.googleapis.com%2Fdata_access",
+  "protoPayload": {
+   "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+   "authenticationInfo": {
+    "principalEmail": "orders-api@shop-prod.iam.gserviceaccount.com"
+   },
+   "authorizationInfo": [
+    {
+     "resource": "projects/_/buckets/orders-data/objects/invoices/2026/0001.pdf",
+     "permission": "storage.objects.get",
+     "granted": true
+    }
+   ],
+   "methodName": "storage.objects.get",
+   "serviceName": "storage.googleapis.com",
+   "status": {}
+  },
+  "resource": {
+   "type": "audited_resource",
+   "labels": {
+    "project_id": "shop-prod"
+   }
+  },
+  "severity": "INFO",
+  "timestamp": "2026-11-01T12:00:02Z"
+ },
+ {
+  "insertId": "a0003",
+  "logName": "projects/shop-prod/logs/cloudaudit.googleapis.com%2Fdata_access",
+  "protoPayload": {
+   "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+   "authenticationInfo": {
+    "principalEmail": "orders-api@shop-prod.iam.gserviceaccount.com"
+   },
+   "authorizationInfo": [
+    {
+     "resource": "projects/_/buckets/orders-data/objects/invoices/2026/0002.pdf",
+     "permission": "storage.objects.get",
+     "granted": true
+    }
+   ],
+   "methodName": "storage.objects.get",
+   "serviceName": "storage.googleapis.com",
+   "status": {}
+  },
+  "resource": {
+   "type": "audited_resource",
+   "labels": {
+    "project_id": "shop-prod"
+   }
+  },
+  "severity": "INFO",
+  "timestamp": "2026-11-01T12:00:03Z"
+ },
+ {
+  "insertId": "a0004",
+  "logName": "projects/shop-prod/logs/cloudaudit.googleapis.com%2Fdata_access",
+  "protoPayload": {
+   "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+   "authenticationInfo": {
+    "principalEmail": "orders-api@shop-prod.iam.gserviceaccount.com"
+   },
+   "authorizationInfo": [
+    {
+     "resource": "projects/_/buckets/orders-data/objects/exports/latest.csv",
+     "permission": "storage.objects.create",
+     "granted": true
+    }
+   ],
+   "methodName": "storage.objects.create",
+   "serviceName": "storage.googleapis.com",
+   "status": {}
+  },
+  "resource": {
+   "type": "audited_resource",
+   "labels": {
+    "project_id": "shop-prod"
+   }
+  },
+  "severity": "INFO",
+  "timestamp": "2026-11-01T12:00:04Z"
+ },
+ {
+  "insertId": "a0005",
+  "logName": "projects/shop-prod/logs/cloudaudit.googleapis.com%2Fdata_access",
+  "protoPayload": {
+   "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+   "authenticationInfo": {
+    "principalEmail": "orders-api@shop-prod.iam.gserviceaccount.com"
+   },
+   "authorizationInfo": [
+    {
+     "permission": "storage.objects.list",
+     "granted": true,
+     "resourceAttributes": {
+      "name": "projects/_/buckets/orders-data",
+      "service": "storage.googleapis.com",
+      "type": "storage.googleapis.com/Bucket"
+     }
+    }
+   ],
+   "methodName": "storage.objects.list",
+   "serviceName": "storage.googleapis.com",
+   "status": {}
+  },
+  "resource": {
+   "type": "audited_resource",
+   "labels": {
+    "project_id": "shop-prod"
+   }
+  },
+  "severity": "INFO",
+  "timestamp": "2026-11-01T12:00:05Z"
+ },
+ {
+  "insertId": "a0006",
+  "logName": "projects/shop-prod/logs/cloudaudit.googleapis.com%2Fdata_access",
+  "protoPayload": {
+   "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+   "authenticationInfo": {
+    "principalEmail": "orders-api@shop-prod.iam.gserviceaccount.com"
+   },
+   "authorizationInfo": [
+    {
+     "resource": "projects/_/buckets/orders-data/objects/exports/old.csv",
+     "permission": "storage.objects.delete"
+    }
+   ],
+   "methodName": "storage.objects.delete",
+   "serviceName": "storage.googleapis.com",
+   "status": {
+    "code": 7,
+    "message": "PERMISSION_DENIED"
+   }
+  },
+  "resource": {
+   "type": "audited_resource",
+   "labels": {
+    "project_id": "shop-prod"
+   }
+  },
+  "severity": "INFO",
+  "timestamp": "2026-11-01T12:00:06Z"
+ },
+ {
+  "insertId": "a0007",
+  "logName": "projects/shop-prod/logs/cloudaudit.googleapis.com%2Fdata_access",
+  "protoPayload": {
+   "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+   "authenticationInfo": {
+    "principalEmail": "orders-api@shop-prod.iam.gserviceaccount.com"
+   },
+   "authorizationInfo": [
+    {
+     "resource": "projects/shop-prod/topics/order-events",
+     "permission": "pubsub.topics.publish",
+     "granted": true
+    }
+   ],
+   "methodName": "google.pubsub.v1.Publisher.Publish",
+   "serviceName": "pubsub.googleapis.com",
+   "status": {}
+  },
+  "resource": {
+   "type": "audited_resource",
+   "labels": {
+    "project_id": "shop-prod"
+   }
+  },
+  "severity": "INFO",
+  "timestamp": "2026-11-01T12:00:07Z"
+ },
+ {
+  "insertId": "a0008",
+  "logName": "projects/shop-prod/logs/cloudaudit.googleapis.com%2Fdata_access",
+  "protoPayload": {
+   "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+   "authenticationInfo": {
+    "principalEmail": "orders-api@shop-prod.iam.gserviceaccount.com"
+   },
+   "authorizationInfo": [
+    {
+     "resource": "projects/123456789/secrets/orders-db/versions/3",
+     "permission": "secretmanager.versions.access",
+     "granted": true
+    }
+   ],
+   "methodName": "google.cloud.secretmanager.v1.SecretManagerService.AccessSecretVersion",
+   "serviceName": "secretmanager.googleapis.com",
+   "status": {}
+  },
+  "resource": {
+   "type": "audited_resource",
+   "labels": {
+    "project_id": "shop-prod"
+   }
+  },
+  "severity": "INFO",
+  "timestamp": "2026-11-01T12:00:08Z"
+ },
+ {
+  "insertId": "a0009",
+  "logName": "projects/shop-prod/logs/cloudaudit.googleapis.com%2Fdata_access",
+  "protoPayload": {
+   "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+   "authenticationInfo": {
+    "principalEmail": "orders-api@shop-prod.iam.gserviceaccount.com"
+   },
+   "authorizationInfo": [
+    {
+     "resource": "projects/shop-prod",
+     "permission": "bigquery.jobs.create",
+     "granted": true
+    }
+   ],
+   "methodName": "jobservice.insert",
+   "serviceName": "bigquery.googleapis.com",
+   "status": {}
+  },
+  "resource": {
+   "type": "audited_resource",
+   "labels": {
+    "project_id": "shop-prod"
+   }
+  },
+  "severity": "INFO",
+  "timestamp": "2026-11-01T12:00:09Z"
+ },
+ {
+  "insertId": "a0010",
+  "logName": "projects/shop-prod/logs/cloudaudit.googleapis.com%2Fdata_access",
+  "protoPayload": {
+   "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+   "authenticationInfo": {
+    "principalEmail": "orders-api@shop-prod.iam.gserviceaccount.com"
+   },
+   "authorizationInfo": [
+    {
+     "resource": "projects/shop-prod/instances/orders",
+     "permission": "cloudsql.instances.connect",
+     "granted": true
+    }
+   ],
+   "methodName": "cloudsql.instances.connect",
+   "serviceName": "cloudsql.googleapis.com",
+   "status": {}
+  },
+  "resource": {
+   "type": "audited_resource",
+   "labels": {
+    "project_id": "shop-prod"
+   }
+  },
+  "severity": "INFO",
+  "timestamp": "2026-11-01T12:00:10Z"
+ },
+ {
+  "insertId": "a0011",
+  "logName": "projects/shop-prod/logs/cloudaudit.googleapis.com%2Factivity",
+  "protoPayload": {
+   "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+   "authenticationInfo": {
+    "principalEmail": "alice@example.com"
+   },
+   "authorizationInfo": [
+    {
+     "resource": "projects/shop-prod",
+     "permission": "compute.instances.list",
+     "granted": true
+    }
+   ],
+   "methodName": "v1.compute.instances.list",
+   "serviceName": "compute.googleapis.com",
+   "status": {}
+  },
+  "resource": {
+   "type": "audited_resource",
+   "labels": {
+    "project_id": "shop-prod"
+   }
+  },
+  "severity": "INFO",
+  "timestamp": "2026-11-01T12:00:11Z"
+ },
+ {
+  "insertId": "a0012",
+  "logName": "projects/shop-prod/logs/cloudaudit.googleapis.com%2Fsystem_event",
+  "protoPayload": {
+   "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+   "authenticationInfo": {},
+   "methodName": "compute.instances.preempted",
+   "serviceName": "compute.googleapis.com",
+   "status": {}
+  },
+  "resource": {
+   "type": "audited_resource",
+   "labels": {
+    "project_id": "shop-prod"
+   }
+  },
+  "severity": "INFO",
+  "timestamp": "2026-11-01T12:00:12Z"
+ }
+]

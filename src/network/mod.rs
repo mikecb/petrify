@@ -1,200 +1,32 @@
-//! Network behaviour -> AWS security group rules.
+//! Network behaviour, and the firewall rules that allow exactly it.
 //!
-//! Flow records are unidirectional and say nothing about who called whom,
+//! The behaviour model here is the same for every cloud; [`aws`], [`gcp`] and
+//! [`azure`] each write its rules in their own dialect.
+//!
+//! Flow records are mostly unidirectional and say nothing about who called whom,
 //! but a stateful firewall rule needs exactly that: it allows the *opening*
 //! of a conversation, and replies come for free. Most of this module is
 //! working out, for each pair of flow records, which end was the server.
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::fmt;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+pub mod aws;
+pub mod azure;
+mod cidr;
+pub mod gcp;
 
-use serde_json::{Value, json};
+use std::collections::{BTreeMap, BTreeSet};
+use std::net::IpAddr;
+
+use cidr::collapse;
+pub use cidr::{Net, summarize};
 
 use crate::events::{Error, Flow, Result};
 use crate::text::{commas, plural, ranked, top};
 
-pub const POLICY_NAME: &str = "security group";
 pub const SUBJECT: &str = "interface";
 
 /// Start of the Linux default ephemeral port range.
 const EPHEMERAL: u16 = 32768;
-/// AWS default quota, per direction.
-const RULES_PER_GROUP: usize = 60;
 const REJECTED_ROWS: usize = 10;
-
-/// Prefix lengths tried, in order, when peers must be summarised.
-const V4_STEPS: [u8; 8] = [32, 28, 24, 20, 16, 12, 8, 0];
-const V6_STEPS: [u8; 6] = [128, 64, 56, 48, 32, 0];
-
-// -- CIDR blocks -------------------------------------------------------------
-
-/// A CIDR block. Ordered by family, then address, then prefix length, which
-/// puts a block directly before the blocks it contains.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Net {
-    v6: bool,
-    bits: u128,
-    prefix: u8,
-}
-
-impl Net {
-    /// The block of length `prefix` containing `address`.
-    pub fn new(address: IpAddr, prefix: u8) -> Net {
-        let (v6, bits) = match address {
-            IpAddr::V4(v4) => (false, u128::from(u32::from(v4))),
-            IpAddr::V6(v6) => (true, u128::from(v6)),
-        };
-        let width = if v6 { 128 } else { 32 };
-        let prefix = prefix.min(width);
-        Net {
-            v6,
-            bits: bits & mask(prefix, width),
-            prefix,
-        }
-    }
-
-    /// `10.0.0.0/16`, or a bare address meaning just that host.
-    pub fn parse(text: &str) -> Option<Net> {
-        match text.split_once('/') {
-            None => Some(Net::host(text.parse().ok()?)),
-            Some((address, prefix)) => {
-                let address: IpAddr = address.parse().ok()?;
-                let prefix: u8 = prefix.parse().ok()?;
-                (prefix <= if address.is_ipv6() { 128 } else { 32 })
-                    .then(|| Net::new(address, prefix))
-            }
-        }
-    }
-
-    fn host(address: IpAddr) -> Net {
-        Net::new(address, 128)
-    }
-
-    fn width(&self) -> u8 {
-        if self.v6 { 128 } else { 32 }
-    }
-
-    fn covers(&self, other: &Net) -> bool {
-        self.v6 == other.v6
-            && self.prefix <= other.prefix
-            && other.bits & mask(self.prefix, self.width()) == self.bits
-    }
-
-    pub fn contains(&self, address: IpAddr) -> bool {
-        self.covers(&Net::host(address))
-    }
-
-    /// The block one bit shorter that contains this one.
-    fn parent(&self) -> Net {
-        let prefix = self.prefix.saturating_sub(1);
-        Net {
-            v6: self.v6,
-            bits: self.bits & mask(prefix, self.width()),
-            prefix,
-        }
-    }
-}
-
-fn mask(prefix: u8, width: u8) -> u128 {
-    if prefix == 0 {
-        return 0;
-    }
-    let all = if width == 128 {
-        u128::MAX
-    } else {
-        (1u128 << width) - 1
-    };
-    all & (u128::MAX << (width - prefix))
-}
-
-impl fmt::Display for Net {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.v6 {
-            write!(f, "{}/{}", Ipv6Addr::from(self.bits), self.prefix)
-        } else {
-            write!(f, "{}/{}", Ipv4Addr::from(self.bits as u32), self.prefix)
-        }
-    }
-}
-
-/// The smallest list of blocks covering exactly the same addresses.
-fn collapse(mut nets: Vec<Net>) -> Vec<Net> {
-    loop {
-        nets.sort();
-        // Sorted, a block can only be covered by the last block kept.
-        let mut kept: Vec<Net> = Vec::with_capacity(nets.len());
-        for net in nets {
-            if !kept.last().is_some_and(|last| last.covers(&net)) {
-                kept.push(net);
-            }
-        }
-        // With covered blocks gone, the two halves of a block are adjacent.
-        let mut merged = Vec::with_capacity(kept.len());
-        let mut index = 0;
-        while index < kept.len() {
-            let (this, next) = (kept[index], kept.get(index + 1));
-            let siblings = next.is_some_and(|next| {
-                this.prefix > 0 && this.prefix == next.prefix && this.parent() == next.parent()
-            });
-            merged.push(if siblings { this.parent() } else { this });
-            index += if siblings { 2 } else { 1 };
-        }
-        if merged.len() == kept.len() {
-            return merged;
-        }
-        nets = merged;
-    }
-}
-
-fn private_ranges() -> [Net; 5] {
-    [
-        "10.0.0.0/8",
-        "172.16.0.0/12",
-        "192.168.0.0/16",
-        "100.64.0.0/10",
-        "fc00::/7",
-    ]
-    .map(|range| Net::parse(range).expect("constant CIDR"))
-}
-
-/// Cover the peers with at most `limit` CIDR blocks per address family,
-/// widening prefixes only as far as needed. Private addresses are never
-/// widened past their private range, so a noisy internal service does not
-/// turn into a rule for the whole internet.
-pub fn summarize(peers: impl IntoIterator<Item = IpAddr>, limit: usize) -> Vec<Net> {
-    let private = private_ranges();
-    let widen = |address: IpAddr, prefix: u8| {
-        let net = Net::new(address, prefix);
-        match private.iter().find(|range| range.contains(address)) {
-            Some(range) if net.prefix < range.prefix => *range,
-            _ => net,
-        }
-    };
-    let peers: Vec<IpAddr> = peers.into_iter().collect();
-    let mut result = Vec::new();
-    for (v6, steps) in [(false, &V4_STEPS[..]), (true, &V6_STEPS[..])] {
-        let family: Vec<IpAddr> = peers
-            .iter()
-            .copied()
-            .filter(|a| a.is_ipv6() == v6)
-            .collect();
-        let mut nets = Vec::new();
-        for &prefix in steps {
-            nets = collapse(
-                family
-                    .iter()
-                    .map(|&address| widen(address, prefix))
-                    .collect(),
-            );
-            if nets.len() <= limit {
-                break;
-            }
-        }
-        result.extend(nets);
-    }
-    result
-}
 
 // -- behaviour ---------------------------------------------------------------
 
@@ -263,6 +95,8 @@ fn ported(proto: u8) -> bool {
 #[derive(Debug, Default)]
 pub struct Collector {
     seen: BTreeMap<String, BTreeMap<FlowKey, Seen>>,
+    /// Addresses the log itself attributed to each subject.
+    known_local: BTreeMap<String, BTreeSet<IpAddr>>,
     events: BTreeMap<String, u64>,
 }
 
@@ -278,6 +112,12 @@ impl Collector {
             dport: if ports { event.dport } else { 0 },
             accepted: event.accepted,
         };
+        if let Some(local) = event.local {
+            self.known_local
+                .entry(event.subject.clone())
+                .or_default()
+                .insert(local);
+        }
         self.seen
             .entry(event.subject)
             .or_default()
@@ -292,7 +132,8 @@ impl Collector {
     }
 
     /// The combined behaviour of the chosen subjects. `local` names the
-    /// application's own addresses; when empty they are inferred.
+    /// application's own addresses; when empty they are the ones the log
+    /// attributed to each subject, or failing that, inferred.
     pub fn behavior(&self, subjects: &[String], local: &[String]) -> Result<Behavior> {
         let mut nets = Vec::new();
         for range in local {
@@ -302,7 +143,10 @@ impl Collector {
         }
         if nets.is_empty() {
             for subject in subjects {
-                nets.push(Net::host(self.infer_local(subject)?));
+                match self.known_local.get(subject) {
+                    Some(known) => nets.extend(known.iter().map(|address| Net::host(*address))),
+                    None => nets.push(Net::host(self.infer_local(subject)?)),
+                }
             }
         }
         let nets = collapse(nets);
@@ -542,85 +386,76 @@ fn ambiguity_note(count: u64) -> String {
     )
 }
 
-/// Security group rules in the shape `aws ec2 describe-security-groups`
-/// prints and `authorize-security-group-*` accepts, and notes about them.
-pub fn policy(behavior: &Behavior, max_peers: usize) -> (Value, Vec<String>) {
-    let mut notes = Vec::new();
-    let mut description = format!("petrify: observed traffic of {}", nets(&behavior.local));
-    description.truncate(255); // the API's limit; the text is ASCII
-    let mut document = json!({ "Description": description });
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Direction {
+    Ingress,
+    Egress,
+}
 
-    for (key, direction, rules) in [
-        ("IpPermissions", "ingress", &behavior.ingress),
-        ("IpPermissionsEgress", "egress", &behavior.egress),
+impl Direction {
+    pub fn name(self) -> &'static str {
+        match self {
+            Direction::Ingress => "ingress",
+            Direction::Egress => "egress",
+        }
+    }
+}
+
+/// One rule the behaviour calls for, before any cloud's dialect: `service`
+/// may be opened by (ingress) or to (egress) the peers in `ranges`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Rule {
+    pub direction: Direction,
+    pub service: Service,
+    pub ranges: Vec<Net>,
+}
+
+/// The rules that allow the behaviour, ingress first, with each rule's peers
+/// summarised into at most `max_peers` ranges per address family; and notes
+/// about what that cost in precision.
+pub fn rules(behavior: &Behavior, max_peers: usize) -> (Vec<Rule>, Vec<String>) {
+    let mut rules = Vec::new();
+    let mut notes = Vec::new();
+    for (direction, services) in [
+        (Direction::Ingress, &behavior.ingress),
+        (Direction::Egress, &behavior.egress),
     ] {
-        let mut permissions = Vec::new();
-        let mut total = 0;
-        for (service, peers) in rules {
+        for (service, peers) in services {
             let ranges = summarize(peers.keys().copied(), max_peers);
-            total += ranges.len();
             if ranges.iter().any(|net| net.prefix == 0) {
                 notes.push(format!(
-                    "{direction} {} is open to the world: {} could not be summarised \
+                    "{} {} is open to the world: {} could not be summarised \
                      into {max_peers} ranges",
+                    direction.name(),
                     service_name(*service),
                     plural(peers.len() as u64, "peer"),
                 ));
             }
-            permissions.push(permission(*service, &ranges));
+            rules.push(Rule {
+                direction,
+                service: *service,
+                ranges,
+            });
         }
-        if total > RULES_PER_GROUP {
-            notes.push(format!(
-                "{total} {direction} rules exceed the default quota of {RULES_PER_GROUP} \
-                 per security group; lower --max-peers"
-            ));
-        }
-        document[key] = Value::Array(permissions);
     }
     if behavior.ambiguous > 0 {
         notes.push(ambiguity_note(behavior.ambiguous));
     }
-    (document, notes)
+    (rules, notes)
 }
 
-fn permission((proto, port): Service, ranges: &[Net]) -> Value {
-    let mut permission = json!({ "IpProtocol": protocol_name(proto) });
-    // -1 means every ICMP type; other portless protocols take no port fields.
-    if let Some(port) = port
-        .map(i32::from)
-        .or(matches!(proto, 1 | 58).then_some(-1))
-    {
-        permission["FromPort"] = json!(port);
-        permission["ToPort"] = json!(port);
-    }
-    let cidrs = |v6: bool, key: &str| -> Vec<Value> {
-        ranges
-            .iter()
-            .filter(|net| net.v6 == v6)
-            .map(|net| json!({ key: net.to_string() }))
-            .collect()
-    };
-    let (v4, v6) = (cidrs(false, "CidrIp"), cidrs(true, "CidrIpv6"));
-    if !v4.is_empty() {
-        permission["IpRanges"] = Value::Array(v4);
-    }
-    if !v6.is_empty() {
-        permission["Ipv6Ranges"] = Value::Array(v6);
-    }
-    permission
-}
-
+/// Flow builders shared by this module's tests and the dialects'.
 #[cfg(test)]
-mod tests {
+pub(crate) mod testing {
     use super::*;
 
-    const ME: &str = "10.0.1.5";
+    pub const ME: &str = "10.0.1.5";
 
-    fn ip(text: &str) -> IpAddr {
+    pub fn ip(text: &str) -> IpAddr {
         text.parse().unwrap()
     }
 
-    fn tcp(src: &str, sport: u16, dst: &str, dport: u16) -> Flow {
+    pub fn tcp(src: &str, sport: u16, dst: &str, dport: u16) -> Flow {
         Flow {
             subject: "eni-1".to_string(),
             proto: 6,
@@ -631,22 +466,36 @@ mod tests {
             accepted: true,
             start: 0.0,
             initiator: None,
+            local: None,
         }
     }
 
-    fn observe(flows: impl IntoIterator<Item = Flow>, local: &[&str]) -> Result<Behavior> {
+    pub fn observe(flows: impl IntoIterator<Item = Flow>, local: &[&str]) -> Result<Behavior> {
         let mut collector = Collector::default();
         flows.into_iter().for_each(|flow| collector.add(flow));
         let local: Vec<String> = local.iter().map(|range| range.to_string()).collect();
         collector.behavior(&["eni-1".to_string()], &local)
     }
 
+    /// The behaviour of some flows on one interface whose address is [`ME`].
+    pub fn behavior(flows: impl IntoIterator<Item = Flow>) -> Behavior {
+        observe(flows, &[ME]).unwrap()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use super::testing::{ME, observe, tcp};
+
+    /// Behaviour with the interface's own address left to be inferred.
     fn behavior(flows: impl IntoIterator<Item = Flow>) -> Behavior {
         observe(flows, &[]).unwrap()
     }
 
-    /// "tcp/443 <- a, b" style summary of one direction's rules.
-    fn rules(found: &BTreeMap<Service, Peers>) -> Vec<String> {
+    /// "tcp/443 a,b" style summary of one direction's services.
+    fn services(found: &BTreeMap<Service, Peers>) -> Vec<String> {
         found
             .iter()
             .map(|(service, peers)| {
@@ -664,8 +513,8 @@ mod tests {
             tcp(ME, 48000, "10.0.2.10", 5432),
             tcp("10.0.2.10", 5432, ME, 48000),
         ]);
-        assert_eq!(rules(&seen.ingress), ["tcp/443 203.0.113.7"]);
-        assert_eq!(rules(&seen.egress), ["tcp/5432 10.0.2.10"]);
+        assert_eq!(services(&seen.ingress), ["tcp/443 203.0.113.7"]);
+        assert_eq!(services(&seen.egress), ["tcp/5432 10.0.2.10"]);
         assert_eq!(nets(&seen.local), "10.0.1.5/32");
     }
 
@@ -675,7 +524,7 @@ mod tests {
             tcp(ME, 443, "203.0.113.7", 51000),
             tcp(ME, 443, "203.0.113.8", 51001),
         ]);
-        assert_eq!(rules(&seen.ingress), ["tcp/443 203.0.113.7,203.0.113.8"]);
+        assert_eq!(services(&seen.ingress), ["tcp/443 203.0.113.7,203.0.113.8"]);
         assert!(seen.egress.is_empty());
     }
 
@@ -693,8 +542,8 @@ mod tests {
             },
             tcp(ME, 40001, "10.0.2.11", 900),
         ]);
-        assert_eq!(rules(&seen.ingress), ["tcp/40000 10.0.2.10"]);
-        assert_eq!(rules(&seen.egress), ["tcp/900 10.0.2.11"]);
+        assert_eq!(services(&seen.ingress), ["tcp/40000 10.0.2.10"]);
+        assert_eq!(services(&seen.egress), ["tcp/900 10.0.2.11"]);
     }
 
     #[test]
@@ -710,8 +559,8 @@ mod tests {
             },
             tcp("10.0.2.20", 20000, ME, 20001),
         ]);
-        assert_eq!(rules(&seen.egress), ["tcp/50000 10.0.2.10"]);
-        assert_eq!(rules(&seen.ingress), ["tcp/20001 10.0.2.20"]);
+        assert_eq!(services(&seen.egress), ["tcp/50000 10.0.2.10"]);
+        assert_eq!(services(&seen.ingress), ["tcp/20001 10.0.2.20"]);
         assert_eq!(seen.ambiguous, 0);
     }
 
@@ -723,12 +572,12 @@ mod tests {
             tcp(ME, 50000, "10.0.2.99", 443), // pins down which address is local
         ]);
         assert_eq!(
-            rules(&seen.egress),
+            services(&seen.egress),
             ["tcp/443 10.0.2.99", "tcp/50000 10.0.2.10"]
         );
-        assert_eq!(rules(&seen.ingress), ["tcp/45000 10.0.2.10"]);
+        assert_eq!(services(&seen.ingress), ["tcp/45000 10.0.2.10"]);
         assert_eq!(seen.ambiguous, 1);
-        let (_, notes) = policy(&seen, 8);
+        let (_, notes) = rules(&seen, 8);
         assert!(notes.iter().any(|note| note.contains("both directions")));
         assert!(describe(&seen).contains("both directions"));
     }
@@ -745,18 +594,11 @@ mod tests {
             ping("10.0.2.99", ME, 6.0),
             tcp(ME, 50000, "10.0.2.98", 443),
         ]);
-        assert_eq!(rules(&seen.egress), ["icmp 10.0.2.99", "tcp/443 10.0.2.98"]);
-        assert!(seen.ingress.is_empty());
-        let (document, _) = policy(&seen, 8);
         assert_eq!(
-            document["IpPermissionsEgress"][0],
-            json!({
-                "IpProtocol": "icmp",
-                "FromPort": -1,
-                "ToPort": -1,
-                "IpRanges": [{"CidrIp": "10.0.2.99/32"}],
-            })
+            services(&seen.egress),
+            ["icmp 10.0.2.99", "tcp/443 10.0.2.98"]
         );
+        assert!(seen.ingress.is_empty());
     }
 
     #[test]
@@ -769,7 +611,7 @@ mod tests {
             tcp("203.0.113.7", 51000, ME, 443),
             tcp("203.0.113.8", 51000, ME, 443),
         ]);
-        assert_eq!(rules(&seen.ingress), ["tcp/443 203.0.113.7,203.0.113.8"]);
+        assert_eq!(services(&seen.ingress), ["tcp/443 203.0.113.7,203.0.113.8"]);
         assert!(describe(&seen).contains("tcp 192.0.2.66 -> 10.0.1.5:22  (1)"));
     }
 
@@ -791,7 +633,7 @@ mod tests {
         assert!(error(observe(one_conversation(), &["not-a-cidr"])).contains("--local"));
 
         let seen = observe(one_conversation(), &["10.0.1.77/24"]).unwrap();
-        assert_eq!(rules(&seen.ingress), ["tcp/443 203.0.113.7"]);
+        assert_eq!(services(&seen.ingress), ["tcp/443 203.0.113.7"]);
         assert_eq!(nets(&seen.local), "10.0.1.0/24");
     }
 
@@ -802,79 +644,8 @@ mod tests {
             tcp("172.16.0.1", 48000, "172.16.0.2", 80),
         ];
         let seen = observe(flows, &["10.0.1.0/24"]).unwrap();
-        assert_eq!(rules(&seen.ingress), ["tcp/5432 10.0.1.5"]);
-        assert_eq!(rules(&seen.egress), ["tcp/5432 10.0.1.9"]);
+        assert_eq!(services(&seen.ingress), ["tcp/5432 10.0.1.5"]);
+        assert_eq!(services(&seen.egress), ["tcp/5432 10.0.1.9"]);
         assert_eq!(seen.transit, 1);
-    }
-
-    fn cidrs(peers: &[String], limit: usize) -> Vec<String> {
-        summarize(peers.iter().map(|peer| ip(peer)), limit)
-            .iter()
-            .map(Net::to_string)
-            .collect()
-    }
-
-    fn peers(pattern: &str, numbers: impl IntoIterator<Item = u32>) -> Vec<String> {
-        numbers
-            .into_iter()
-            .map(|n| pattern.replace('N', &n.to_string()))
-            .collect()
-    }
-
-    #[test]
-    fn summarize_keeps_exact_hosts_when_they_fit() {
-        let two = ["203.0.113.7".to_string(), "198.51.100.20".to_string()];
-        assert_eq!(cidrs(&two, 8), ["198.51.100.20/32", "203.0.113.7/32"]);
-        assert_eq!(cidrs(&peers("10.0.0.N", 4..=5), 8), ["10.0.0.4/31"]);
-        assert_eq!(cidrs(&peers("10.0.0.N", 0..=255), 8), ["10.0.0.0/24"]);
-    }
-
-    #[test]
-    fn summarize_widens_only_as_far_as_needed() {
-        let odd = peers("203.0.113.N", (1..40).step_by(2));
-        assert_eq!(cidrs(&odd, 4), ["203.0.113.0/27", "203.0.113.32/28"]);
-        assert_eq!(cidrs(&odd, 1), ["203.0.113.0/24"]);
-    }
-
-    #[test]
-    fn summarize_never_widens_private_peers_to_the_internet() {
-        let mut internal = peers("10.N.0.1", 0..40);
-        internal.extend(peers("192.168.N.1", 0..40));
-        assert_eq!(cidrs(&internal, 2), ["10.0.0.0/8", "192.168.0.0/16"]);
-
-        let mut scattered = peers("N.1.1.1", 11..60);
-        scattered.push("10.1.1.1".to_string());
-        assert_eq!(cidrs(&scattered, 2), ["0.0.0.0/0"]);
-    }
-
-    #[test]
-    fn summarize_handles_each_address_family_separately() {
-        let mixed = ["2001:db8::1".to_string(), "203.0.113.7".to_string()];
-        assert_eq!(cidrs(&mixed, 1), ["203.0.113.7/32", "2001:db8::1/128"]);
-        let v6 = peers("2001:db8:0:1::N", 1..=9);
-        assert_eq!(cidrs(&v6, 2), ["2001:db8:0:1::/64"]);
-    }
-
-    #[test]
-    fn policy_flags_world_open_rules_and_quota() {
-        let calls = |range: std::ops::Range<u32>| {
-            range
-                .map(|n| tcp(ME, 40000 + n as u16, &format!("{n}.1.1.1"), 443))
-                .collect::<Vec<_>>()
-        };
-        let (document, notes) = policy(&behavior(calls(11..60)), 4);
-        assert_eq!(
-            document["IpPermissionsEgress"],
-            json!([{
-                "IpProtocol": "tcp",
-                "FromPort": 443,
-                "ToPort": 443,
-                "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
-            }])
-        );
-        assert!(notes.iter().any(|note| note.contains("open to the world")));
-
-        let (_, notes) = policy(&behavior(calls(11..111)), 200);
-        assert!(notes.iter().any(|note| note.contains("quota")));
     }
 }

@@ -1,0 +1,392 @@
+[
+ {
+  "authorization": {
+   "action": "Microsoft.Storage/storageAccounts/listKeys/action",
+   "scope": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/orders/providers/Microsoft.Storage/storageAccounts/ordersdata"
+  },
+  "caller": "orders-api-deployer",
+  "channels": "Operation",
+  "category": {
+   "value": "Administrative",
+   "localizedValue": "Administrative"
+  },
+  "correlationId": "c-001",
+  "eventTimestamp": "2026-11-01T12:00:01.0000000Z",
+  "level": "Informational",
+  "operationName": {
+   "value": "Microsoft.Storage/storageAccounts/listKeys/action",
+   "localizedValue": "Microsoft.Storage/storageAccounts/listKeys/action"
+  },
+  "resourceGroupName": "orders",
+  "resourceId": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/orders/providers/Microsoft.Storage/storageAccounts/ordersdata",
+  "status": {
+   "value": "Started",
+   "localizedValue": "Started"
+  },
+  "subStatus": {
+   "value": "",
+   "localizedValue": ""
+  },
+  "subscriptionId": "aaaa1111-2222-3333-4444-555555555555"
+ },
+ {
+  "authorization": {
+   "action": "Microsoft.Storage/storageAccounts/listKeys/action",
+   "scope": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/orders/providers/Microsoft.Storage/storageAccounts/ordersdata"
+  },
+  "caller": "orders-api-deployer",
+  "channels": "Operation",
+  "category": {
+   "value": "Administrative",
+   "localizedValue": "Administrative"
+  },
+  "correlationId": "c-001",
+  "eventTimestamp": "2026-11-01T12:00:02.0000000Z",
+  "level": "Informational",
+  "operationName": {
+   "value": "Microsoft.Storage/storageAccounts/listKeys/action",
+   "localizedValue": "Microsoft.Storage/storageAccounts/listKeys/action"
+  },
+  "resourceGroupName": "orders",
+  "resourceId": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/orders/providers/Microsoft.Storage/storageAccounts/ordersdata",
+  "status": {
+   "value": "Succeeded",
+   "localizedValue": "Succeeded"
+  },
+  "subStatus": {
+   "value": "",
+   "localizedValue": ""
+  },
+  "subscriptionId": "aaaa1111-2222-3333-4444-555555555555"
+ },
+ {
+  "authorization": {
+   "action": "Microsoft.Compute/virtualMachines/restart/action",
+   "scope": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/orders/providers/Microsoft.Compute/virtualMachines/orders-api-1"
+  },
+  "caller": "orders-api-deployer",
+  "channels": "Operation",
+  "category": {
+   "value": "Administrative",
+   "localizedValue": "Administrative"
+  },
+  "correlationId": "c-002",
+  "eventTimestamp": "2026-11-01T12:00:03.0000000Z",
+  "level": "Informational",
+  "operationName": {
+   "value": "Microsoft.Compute/virtualMachines/restart/action",
+   "localizedValue": "Microsoft.Compute/virtualMachines/restart/action"
+  },
+  "resourceGroupName": "orders",
+  "resourceId": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/orders/providers/Microsoft.Compute/virtualMachines/orders-api-1",
+  "status": {
+   "value": "Started",
+   "localizedValue": "Started"
+  },
+  "subStatus": {
+   "value": "",
+   "localizedValue": ""
+  },
+  "subscriptionId": "aaaa1111-2222-3333-4444-555555555555"
+ },
+ {
+  "authorization": {
+   "action": "Microsoft.Compute/virtualMachines/restart/action",
+   "scope": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/orders/providers/Microsoft.Compute/virtualMachines/orders-api-1"
+  },
+  "caller": "orders-api-deployer",
+  "channels": "Operation",
+  "category": {
+   "value": "Administrative",
+   "localizedValue": "Administrative"
+  },
+  "correlationId": "c-002",
+  "eventTimestamp": "2026-11-01T12:00:04.0000000Z",
+  "level": "Informational",
+  "operationName": {
+   "value": "Microsoft.Compute/virtualMachines/restart/action",
+   "localizedValue": "Microsoft.Compute/virtualMachines/restart/action"
+  },
+  "resourceGroupName": "orders",
+  "resourceId": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/orders/providers/Microsoft.Compute/virtualMachines/orders-api-1",
+  "status": {
+   "value": "Succeeded",
+   "localizedValue": "Succeeded"
+  },
+  "subStatus": {
+   "value": "",
+   "localizedValue": ""
+  },
+  "subscriptionId": "aaaa1111-2222-3333-4444-555555555555"
+ },
+ {
+  "authorization": {
+   "action": "Microsoft.Compute/virtualMachines/restart/action",
+   "scope": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/orders/providers/Microsoft.Compute/virtualMachines/orders-api-2"
+  },
+  "caller": "orders-api-deployer",
+  "channels": "Operation",
+  "category": {
+   "value": "Administrative",
+   "localizedValue": "Administrative"
+  },
+  "correlationId": "c-003",
+  "eventTimestamp": "2026-11-01T12:00:05.0000000Z",
+  "level": "Informational",
+  "operationName": {
+   "value": "Microsoft.Compute/virtualMachines/restart/action",
+   "localizedValue": "Microsoft.Compute/virtualMachines/restart/action"
+  },
+  "resourceGroupName": "orders",
+  "resourceId": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/orders/providers/Microsoft.Compute/virtualMachines/orders-api-2",
+  "status": {
+   "value": "Started",
+   "localizedValue": "Started"
+  },
+  "subStatus": {
+   "value": "",
+   "localizedValue": ""
+  },
+  "subscriptionId": "aaaa1111-2222-3333-4444-555555555555"
+ },
+ {
+  "authorization": {
+   "action": "Microsoft.Compute/virtualMachines/restart/action",
+   "scope": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/orders/providers/Microsoft.Compute/virtualMachines/orders-api-2"
+  },
+  "caller": "orders-api-deployer",
+  "channels": "Operation",
+  "category": {
+   "value": "Administrative",
+   "localizedValue": "Administrative"
+  },
+  "correlationId": "c-003",
+  "eventTimestamp": "2026-11-01T12:00:06.0000000Z",
+  "level": "Informational",
+  "operationName": {
+   "value": "Microsoft.Compute/virtualMachines/restart/action",
+   "localizedValue": "Microsoft.Compute/virtualMachines/restart/action"
+  },
+  "resourceGroupName": "orders",
+  "resourceId": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/orders/providers/Microsoft.Compute/virtualMachines/orders-api-2",
+  "status": {
+   "value": "Succeeded",
+   "localizedValue": "Succeeded"
+  },
+  "subStatus": {
+   "value": "",
+   "localizedValue": ""
+  },
+  "subscriptionId": "aaaa1111-2222-3333-4444-555555555555"
+ },
+ {
+  "authorization": {
+   "action": "Microsoft.Network/networkSecurityGroups/securityRules/write",
+   "scope": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/shared/providers/Microsoft.Network/networkSecurityGroups/web/securityRules/allow-https"
+  },
+  "caller": "orders-api-deployer",
+  "channels": "Operation",
+  "category": {
+   "value": "Administrative",
+   "localizedValue": "Administrative"
+  },
+  "correlationId": "c-004",
+  "eventTimestamp": "2026-11-01T12:00:07.0000000Z",
+  "level": "Informational",
+  "operationName": {
+   "value": "Microsoft.Network/networkSecurityGroups/securityRules/write",
+   "localizedValue": "Microsoft.Network/networkSecurityGroups/securityRules/write"
+  },
+  "resourceGroupName": "shared",
+  "resourceId": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/shared/providers/Microsoft.Network/networkSecurityGroups/web/securityRules/allow-https",
+  "status": {
+   "value": "Started",
+   "localizedValue": "Started"
+  },
+  "subStatus": {
+   "value": "",
+   "localizedValue": ""
+  },
+  "subscriptionId": "aaaa1111-2222-3333-4444-555555555555"
+ },
+ {
+  "authorization": {
+   "action": "Microsoft.Network/networkSecurityGroups/securityRules/write",
+   "scope": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/shared/providers/Microsoft.Network/networkSecurityGroups/web/securityRules/allow-https"
+  },
+  "caller": "orders-api-deployer",
+  "channels": "Operation",
+  "category": {
+   "value": "Administrative",
+   "localizedValue": "Administrative"
+  },
+  "correlationId": "c-004",
+  "eventTimestamp": "2026-11-01T12:00:08.0000000Z",
+  "level": "Informational",
+  "operationName": {
+   "value": "Microsoft.Network/networkSecurityGroups/securityRules/write",
+   "localizedValue": "Microsoft.Network/networkSecurityGroups/securityRules/write"
+  },
+  "resourceGroupName": "shared",
+  "resourceId": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/shared/providers/Microsoft.Network/networkSecurityGroups/web/securityRules/allow-https",
+  "status": {
+   "value": "Succeeded",
+   "localizedValue": "Succeeded"
+  },
+  "subStatus": {
+   "value": "",
+   "localizedValue": ""
+  },
+  "subscriptionId": "aaaa1111-2222-3333-4444-555555555555"
+ },
+ {
+  "authorization": {
+   "action": "Microsoft.KeyVault/vaults/secrets/write",
+   "scope": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/orders/providers/Microsoft.KeyVault/vaults/orders-kv/secrets/db-password"
+  },
+  "caller": "orders-api-deployer",
+  "channels": "Operation",
+  "category": {
+   "value": "Administrative",
+   "localizedValue": "Administrative"
+  },
+  "correlationId": "c-005",
+  "eventTimestamp": "2026-11-01T12:00:09.0000000Z",
+  "level": "Informational",
+  "operationName": {
+   "value": "Microsoft.KeyVault/vaults/secrets/write",
+   "localizedValue": "Microsoft.KeyVault/vaults/secrets/write"
+  },
+  "resourceGroupName": "orders",
+  "resourceId": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/orders/providers/Microsoft.KeyVault/vaults/orders-kv/secrets/db-password",
+  "status": {
+   "value": "Started",
+   "localizedValue": "Started"
+  },
+  "subStatus": {
+   "value": "",
+   "localizedValue": ""
+  },
+  "subscriptionId": "aaaa1111-2222-3333-4444-555555555555"
+ },
+ {
+  "authorization": {
+   "action": "Microsoft.KeyVault/vaults/secrets/write",
+   "scope": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/orders/providers/Microsoft.KeyVault/vaults/orders-kv/secrets/db-password"
+  },
+  "caller": "orders-api-deployer",
+  "channels": "Operation",
+  "category": {
+   "value": "Administrative",
+   "localizedValue": "Administrative"
+  },
+  "correlationId": "c-005",
+  "eventTimestamp": "2026-11-01T12:00:10.0000000Z",
+  "level": "Informational",
+  "operationName": {
+   "value": "Microsoft.KeyVault/vaults/secrets/write",
+   "localizedValue": "Microsoft.KeyVault/vaults/secrets/write"
+  },
+  "resourceGroupName": "orders",
+  "resourceId": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/orders/providers/Microsoft.KeyVault/vaults/orders-kv/secrets/db-password",
+  "status": {
+   "value": "Succeeded",
+   "localizedValue": "Succeeded"
+  },
+  "subStatus": {
+   "value": "",
+   "localizedValue": ""
+  },
+  "subscriptionId": "aaaa1111-2222-3333-4444-555555555555"
+ },
+ {
+  "authorization": {
+   "action": "Microsoft.Resources/subscriptions/resourceGroups/write",
+   "scope": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/sandbox"
+  },
+  "caller": "alice@contoso.com",
+  "channels": "Operation",
+  "category": {
+   "value": "Administrative",
+   "localizedValue": "Administrative"
+  },
+  "correlationId": "c-006",
+  "eventTimestamp": "2026-11-01T12:00:11.0000000Z",
+  "level": "Informational",
+  "operationName": {
+   "value": "Microsoft.Resources/subscriptions/resourceGroups/write",
+   "localizedValue": "Microsoft.Resources/subscriptions/resourceGroups/write"
+  },
+  "resourceGroupName": "sandbox",
+  "resourceId": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/sandbox",
+  "status": {
+   "value": "Started",
+   "localizedValue": "Started"
+  },
+  "subStatus": {
+   "value": "",
+   "localizedValue": ""
+  },
+  "subscriptionId": "aaaa1111-2222-3333-4444-555555555555"
+ },
+ {
+  "authorization": {
+   "action": "Microsoft.Resources/subscriptions/resourceGroups/write",
+   "scope": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/sandbox"
+  },
+  "caller": "alice@contoso.com",
+  "channels": "Operation",
+  "category": {
+   "value": "Administrative",
+   "localizedValue": "Administrative"
+  },
+  "correlationId": "c-006",
+  "eventTimestamp": "2026-11-01T12:00:12.0000000Z",
+  "level": "Informational",
+  "operationName": {
+   "value": "Microsoft.Resources/subscriptions/resourceGroups/write",
+   "localizedValue": "Microsoft.Resources/subscriptions/resourceGroups/write"
+  },
+  "resourceGroupName": "sandbox",
+  "resourceId": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/sandbox",
+  "status": {
+   "value": "Succeeded",
+   "localizedValue": "Succeeded"
+  },
+  "subStatus": {
+   "value": "",
+   "localizedValue": ""
+  },
+  "subscriptionId": "aaaa1111-2222-3333-4444-555555555555"
+ },
+ {
+  "authorization": {
+   "action": "Microsoft.ServiceHealth/incident/action",
+   "scope": "/subscriptions/aaaa1111-2222-3333-4444-555555555555"
+  },
+  "caller": "Microsoft.ServiceHealth",
+  "channels": "Operation",
+  "category": {
+   "value": "ServiceHealth",
+   "localizedValue": "ServiceHealth"
+  },
+  "correlationId": "c-007",
+  "eventTimestamp": "2026-11-01T12:00:13.0000000Z",
+  "level": "Informational",
+  "operationName": {
+   "value": "Microsoft.ServiceHealth/incident/action",
+   "localizedValue": "Microsoft.ServiceHealth/incident/action"
+  },
+  "resourceGroupName": "",
+  "resourceId": "/subscriptions/aaaa1111-2222-3333-4444-555555555555",
+  "status": {
+   "value": "Active",
+   "localizedValue": "Active"
+  },
+  "subStatus": {
+   "value": "",
+   "localizedValue": ""
+  },
+  "subscriptionId": "aaaa1111-2222-3333-4444-555555555555"
+ }
+]

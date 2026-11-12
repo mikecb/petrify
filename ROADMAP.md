@@ -3,28 +3,35 @@
 Where petrify is, and where it could go next. The order within each section is
 roughly the order of value; nothing here is scheduled.
 
-## Today (0.1)
+## Today (0.2)
 
-| Log                                  | Policy               | Tested against                          |
-| ------------------------------------ | -------------------- | --------------------------------------- |
-| AWS CloudTrail                       | IAM policy           | hand-written fixtures only              |
-| VPC Flow Logs, flow CSV              | security group rules | hand-written fixtures only              |
-| `strace`, audit / kernel-log records | seccomp profile      | a real container under Docker and runc  |
+| Log                                  | Policy                   | Tested against                         |
+| ------------------------------------ | ------------------------ | -------------------------------------- |
+| AWS CloudTrail                       | IAM policy               | hand-written fixtures only             |
+| Google Cloud Audit Logs              | IAM custom role          | hand-written fixtures only             |
+| Azure Activity Log                   | custom role              | hand-written fixtures only             |
+| AWS VPC Flow Logs, flow CSV          | security group rules     | hand-written fixtures only             |
+| Google Cloud VPC Flow Logs           | VPC firewall rules       | hand-written fixtures only             |
+| Azure VNet and NSG flow logs         | NSG security rules       | hand-written fixtures only             |
+| `strace`, audit / kernel-log records | seccomp profile          | a real container under Docker and runc |
 
-The seccomp path has run end to end. The two AWS paths have not yet met a real
-log or a real AWS account, which is the first thing to fix.
+The seccomp path has run end to end. None of the cloud paths has yet met a
+real log or a real account, which is the first thing to fix. The Google Cloud
+and Azure formats were written from the vendors' documentation, API
+definitions and public sample logs.
 
 Pull requests are checked on Linux and macOS, and a version tag publishes
 binaries for both once the same checks pass.
 
 ## 1. Trust what exists
 
-Before adding breadth, make the three current policies ones you can apply
+Before adding more breadth, make the current policies ones you can apply
 without reading them line by line.
 
-- **Run against real logs.** A real CloudTrail trail and real flow logs from a
-  known application, with the generated policy applied and the application
-  exercised. Turn what breaks into fixtures.
+- **Run against real logs.** Real audit and flow logs from a known application
+  in each cloud, with the generated policy applied and the application
+  exercised. Turn what breaks into fixtures. For Google Cloud and Azure this
+  also means running the commands the README gives for applying the output.
 - **IAM actions from the source of truth.** Replace the hand-written
   event-to-action tables with data generated from the AWS Service
   Authorization Reference, the way the syscall tables are generated from
@@ -34,7 +41,16 @@ without reading them line by line.
 - **Flag what a log cannot show.** When the behaviour implies a permission
   CloudTrail never records (`iam:PassRole` for `RunInstances` or
   `CreateFunction`, `kms:Decrypt` behind an encrypted bucket), say so.
-- **Flow logs without a header.** A `--fields` option for custom formats
+- **Azure reads and data actions.** A role built from the Activity Log has
+  neither. Read the resource logs that do record them (storage, Key Vault),
+  and fill `DataActions`.
+- **Google Cloud bindings.** Write the role bindings, with IAM Conditions on
+  resource names, that scope a custom role to the resources the log shows,
+  instead of leaving that to a note.
+- **Confirm the Azure flow tuple reading.** petrify takes a tuple's source to
+  be the end that opened the connection, as the documented samples show but
+  the documentation does not say.
+- **Flow logs without a header.** A `--fields` option for custom AWS formats
   delivered to CloudWatch Logs, which carry no header line.
 - **Seccomp with auditd.** Confirm the dry-run loop converges in one round
   when auditd is running, and test against crun and containerd.
@@ -58,8 +74,9 @@ can I remove?", and answering it needs no new log format.
 
 Each of these is a second `policy` function over an existing behaviour model.
 
-- **Terraform output** for the IAM policy and the security group, since that
-  is how most of them are applied.
+- **Terraform output** for every cloud's roles and firewall rules, since that
+  is how most of them are applied, and it would replace the shell loops the
+  README needs for Google Cloud and Azure today.
 - **Kubernetes NetworkPolicy** and **nftables** rules from flows.
 - **systemd hardening** from a trace: `SystemCallFilter=`, `IPAddressAllow=`,
   `ReadWritePaths=`, `RestrictAddressFamilies=`.
@@ -73,9 +90,10 @@ Each of these is a second `policy` function over an existing behaviour model.
   requests, instead of allowing a syscall outright.
 - **IAM conditions** where the log supports them: `aws:SourceVpc`, encryption
   context, required tags.
-- **Security groups that reference** other security groups and AWS prefix
-  lists rather than CIDR ranges. The second fixes the commonest reason a rule
-  widens to `0.0.0.0/0`: an AWS service with many addresses.
+- **Rules that reference what the peer is**, not its address: other security
+  groups and AWS prefix lists, Google Cloud tags and service accounts, Azure
+  service tags and application security groups. That fixes the commonest
+  reason a rule widens to `0.0.0.0/0`: a cloud service with many addresses.
 - **Port ranges**, for peers that speak on many adjacent ports.
 
 ## 5. macOS: Santa rules
@@ -116,9 +134,10 @@ Nothing has been tested there yet.
 - **Syscalls**: eBPF tracers (Tetragon, Tracee, Falco), `perf trace`, and
   `strace -c` summaries. These can trace a container from its first
   instruction, which removes the dry-run loop.
-- **Cloud**: Kubernetes audit logs to RBAC roles; GCP Cloud Audit Logs and
-  Azure Activity Logs to their IAM; reading CloudTrail Lake, Athena and
-  CloudWatch Logs directly rather than from exported files.
+- **Cloud**: Kubernetes audit logs to RBAC roles; Google Cloud firewall rule
+  logs, which say what was denied, as its flow logs cannot; reading CloudTrail
+  Lake, Athena, CloudWatch Logs, Cloud Logging and Azure Monitor directly
+  rather than from exported files.
 
 ## Not planned
 
