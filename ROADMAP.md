@@ -14,6 +14,9 @@ roughly the order of value; nothing here is scheduled.
 The seccomp path has run end to end. The two AWS paths have not yet met a real
 log or a real AWS account, which is the first thing to fix.
 
+Pull requests are checked on Linux and macOS, and a version tag publishes
+binaries for both once the same checks pass.
+
 ## 1. Trust what exists
 
 Before adding breadth, make the three current policies ones you can apply
@@ -37,8 +40,6 @@ without reading them line by line.
   when auditd is running, and test against crun and containerd.
 - **Large logs.** CloudTrail files are read whole; stream them. Measure memory
   on a day of flow logs from a busy interface.
-- **CI and releases.** Format, clippy and tests on every push; prebuilt
-  binaries for Linux and macOS on tag.
 
 ## 2. Compare, not just generate
 
