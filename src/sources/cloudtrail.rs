@@ -13,6 +13,7 @@ use regex::Regex;
 use serde_json::Value;
 
 use crate::events::{ApiCall, Notes};
+use crate::sources::{json_documents, text};
 
 pub fn sniff(head: &str) -> bool {
     head.contains("\"eventSource\"") || head.contains("\"CloudTrailEvent\"")
@@ -26,22 +27,7 @@ pub fn parse(
     notes: &mut Notes,
     emit: &mut dyn FnMut(ApiCall),
 ) -> io::Result<()> {
-    let mut bytes = Vec::new();
-    reader.read_to_end(&mut bytes)?;
-    let text = String::from_utf8_lossy(&bytes);
-
-    let mut documents = Vec::new();
-    match serde_json::from_str::<Value>(&text) {
-        Ok(document) => documents.push(document),
-        Err(_) => {
-            for line in text.lines().filter(|line| !line.trim().is_empty()) {
-                match serde_json::from_str::<Value>(line) {
-                    Ok(document) => documents.push(document),
-                    Err(_) => notes.add("skipped a line that is not valid JSON"),
-                }
-            }
-        }
-    }
+    let documents = json_documents(reader, notes)?;
     for document in &documents {
         unwrap(document, notes, emit);
     }
@@ -87,13 +73,6 @@ static SQS_URL: LazyLock<Regex> =
 static KMS_KEY_ID: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(mrk-)?[0-9a-f-]{32,36}$").unwrap());
 
-fn text<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
-    value
-        .get(key)
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-}
-
 fn calls(record: &Value, emit: &mut dyn FnMut(ApiCall)) {
     if text(record, "eventType").unwrap_or("AwsApiCall") != "AwsApiCall" {
         return; // service-side events and console sign-ins need no IAM action
@@ -117,8 +96,7 @@ fn calls(record: &Value, emit: &mut dyn FnMut(ApiCall)) {
     let mut call = |action: String, resources: Vec<String>| {
         emit(ApiCall {
             subject: subject.clone(),
-            service: service.clone(),
-            action,
+            action: format!("{service}:{action}"),
             resources,
             denied,
         })
@@ -507,10 +485,7 @@ mod tests {
     /// (service:Action, resources) for each call the events produce.
     fn calls(events: Value) -> Vec<(String, Vec<String>)> {
         let (found, _) = parse_text(&json!({ "Records": events }).to_string());
-        found
-            .into_iter()
-            .map(|c| (format!("{}:{}", c.service, c.action), c.resources))
-            .collect()
+        found.into_iter().map(|c| (c.action, c.resources)).collect()
     }
 
     fn expect(action: &str, resources: &[&str]) -> (String, Vec<String>) {

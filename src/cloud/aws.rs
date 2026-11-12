@@ -1,104 +1,16 @@
-//! Cloud API behaviour -> IAM policy.
+//! Cloud API behaviour -> AWS IAM policy.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Value, json};
 
-use crate::events::ApiCall;
-use crate::text::{commas, plural, top};
+use super::Behavior;
+use crate::text::{commas, plural};
 
 pub const POLICY_NAME: &str = "IAM policy";
-pub const SUBJECT: &str = "principal";
 
 /// Characters in a managed policy, not counting whitespace.
 const MANAGED_POLICY_LIMIT: usize = 6144;
-
-/// `service:Action` -> how often each resource was touched.
-type Uses = BTreeMap<String, BTreeMap<String, u64>>;
-
-#[derive(Debug, Default)]
-pub struct Behavior {
-    pub allowed: Uses,
-    pub denied: Uses,
-}
-
-#[derive(Debug, Default)]
-pub struct Collector {
-    seen: BTreeMap<String, Behavior>,
-    events: BTreeMap<String, u64>,
-}
-
-impl Collector {
-    pub fn add(&mut self, event: ApiCall) {
-        *self.events.entry(event.subject.clone()).or_default() += 1;
-        let behavior = self.seen.entry(event.subject).or_default();
-        let uses = if event.denied {
-            &mut behavior.denied
-        } else {
-            &mut behavior.allowed
-        };
-        let resources = uses
-            .entry(format!("{}:{}", event.service, event.action))
-            .or_default();
-        for resource in event.resources {
-            *resources.entry(resource).or_default() += 1;
-        }
-    }
-
-    /// Subjects seen, with how many events each produced.
-    pub fn subjects(&self) -> &BTreeMap<String, u64> {
-        &self.events
-    }
-
-    /// The combined behaviour of the chosen subjects.
-    pub fn behavior(&self, subjects: &[String]) -> Behavior {
-        let mut merged = Behavior::default();
-        for seen in subjects.iter().filter_map(|subject| self.seen.get(subject)) {
-            for (from, into) in [
-                (&seen.allowed, &mut merged.allowed),
-                (&seen.denied, &mut merged.denied),
-            ] {
-                for (action, resources) in from {
-                    let target = into.entry(action.clone()).or_default();
-                    for (resource, count) in resources {
-                        *target.entry(resource.clone()).or_default() += count;
-                    }
-                }
-            }
-        }
-        merged
-    }
-}
-
-pub fn describe(behavior: &Behavior) -> String {
-    let services: BTreeSet<&str> = behavior
-        .allowed
-        .keys()
-        .filter_map(|action| action.split(':').next())
-        .collect();
-    let mut lines = vec![format!(
-        "API calls: {} across {}",
-        plural(behavior.allowed.len() as u64, "action"),
-        plural(services.len() as u64, "service"),
-    )];
-    lines.extend(table(&behavior.allowed));
-    if !behavior.denied.is_empty() {
-        lines.push(String::new());
-        lines.push("Denied (left out of the policy unless --include-denied):".to_string());
-        lines.extend(table(&behavior.denied));
-    }
-    lines.join("\n")
-}
-
-fn table(uses: &Uses) -> Vec<String> {
-    let width = uses.keys().map(String::len).max().unwrap_or(0);
-    uses.iter()
-        .map(|(action, resources)| {
-            let calls = commas(resources.values().sum());
-            format!("  {action:<width$}  {calls:>7}  {}", top(resources, 3))
-        })
-        .collect()
-}
 
 /// An IAM policy document granting the observed calls, and notes about it.
 pub fn policy(
@@ -107,14 +19,7 @@ pub fn policy(
     max_resources: usize,
 ) -> (Value, Vec<String>) {
     let mut notes = Vec::new();
-    let mut grants: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
-    let denied = include_denied.then_some(&behavior.denied);
-    for (action, resources) in behavior.allowed.iter().chain(denied.into_iter().flatten()) {
-        grants
-            .entry(action)
-            .or_default()
-            .extend(resources.keys().cloned());
-    }
+    let grants = behavior.granted(include_denied);
 
     // Actions that share a resource list share a statement.
     let mut statements: BTreeMap<Vec<String>, Vec<&str>> = BTreeMap::new();
@@ -241,23 +146,8 @@ fn prune(paths: BTreeSet<Vec<&str>>) -> BTreeSet<Vec<&str>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn call(action: &str, resource: &str, denied: bool) -> ApiCall {
-        let (service, action) = action.split_once(':').unwrap();
-        ApiCall {
-            subject: "app".to_string(),
-            service: service.to_string(),
-            action: action.to_string(),
-            resources: vec![resource.to_string()],
-            denied,
-        }
-    }
-
-    fn behavior(calls: impl IntoIterator<Item = ApiCall>) -> Behavior {
-        let mut collector = Collector::default();
-        calls.into_iter().for_each(|call| collector.add(call));
-        collector.behavior(&["app".to_string()])
-    }
+    use crate::cloud::testing::{behavior, call};
+    use crate::events::Provider::Aws;
 
     fn set(items: impl IntoIterator<Item = String>) -> BTreeSet<String> {
         items.into_iter().collect()
@@ -265,13 +155,14 @@ mod tests {
 
     #[test]
     fn denied_calls_are_reported_but_not_granted() {
-        let seen = behavior([
-            call("s3:GetObject", "arn:aws:s3:::b/k", false),
-            call("s3:PutObject", "arn:aws:s3:::b/k", true),
-            call("ec2:RunInstances", "*", true),
-        ]);
-        assert!(describe(&seen).contains("left out"));
-
+        let seen = behavior(
+            Aws,
+            [
+                call("s3:GetObject", "arn:aws:s3:::b/k", false),
+                call("s3:PutObject", "arn:aws:s3:::b/k", true),
+                call("ec2:RunInstances", "*", true),
+            ],
+        );
         let (document, _) = policy(&seen, false, 10);
         assert_eq!(
             document["Statement"],
@@ -295,20 +186,6 @@ mod tests {
                 .iter()
                 .any(|note| note.starts_with("1 action granted on \"*\""))
         );
-    }
-
-    #[test]
-    fn subjects_are_kept_apart_until_chosen() {
-        let mut collector = Collector::default();
-        collector.add(call("s3:GetObject", "arn:aws:s3:::b/k", false));
-        collector.add(ApiCall {
-            subject: "other".into(),
-            ..call("sqs:SendMessage", "*", false)
-        });
-        assert_eq!(collector.subjects().len(), 2);
-        assert_eq!(collector.behavior(&["app".to_string()]).allowed.len(), 1);
-        let both = collector.behavior(&["app".to_string(), "other".to_string()]);
-        assert_eq!(both.allowed.len(), 2);
     }
 
     #[test]
@@ -353,11 +230,11 @@ mod tests {
 
     #[test]
     fn oversized_policy_is_flagged() {
-        let seen = behavior((0..120).map(|n| {
+        let calls = (0..120).map(|n| {
             let queue = format!("arn:aws:sqs:eu-west-1:111122223333:a-rather-long-queue-name-{n}");
             call("sqs:SendMessage", &queue, false)
-        }));
-        let (_, notes) = policy(&seen, false, 10);
+        });
+        let (_, notes) = policy(&behavior(Aws, calls), false, 10);
         assert!(
             notes
                 .iter()

@@ -1,6 +1,6 @@
 [package]
 name = "petrify"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Turn observed application behaviour (CloudTrail, flow logs, syscall traces) into least-privilege policy"
 license = "MIT"

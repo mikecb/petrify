@@ -5,12 +5,15 @@ use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use serde_json::Value;
 
-use crate::events::{Arch, Error, Notes, Result};
+use crate::events::{Arch, Error, Notes, Provider, Result};
 use crate::inputs::expand;
-use crate::sources::{Format, Kind, auditd, cloudtrail, netflow, strace, vpcflow};
+use crate::sources::{
+    Format, Kind, auditd, aws_flow, azure_activity, azure_flow, cloudtrail, gcp_audit, gcp_flow,
+    netflow, strace,
+};
 use crate::syscalls::DefaultAction;
 use crate::text::{commas, plural};
 use crate::{cloud, network, syscalls};
@@ -20,8 +23,9 @@ use crate::{cloud, network, syscalls};
     name = "petrify",
     version,
     about = "Turn what an application was observed doing into a policy that lets it do nothing else.",
-    after_help = "CloudTrail becomes an IAM policy, flow logs a security group, strace or audit \
-                  logs a seccomp profile. The format is detected."
+    after_help = "Cloud audit logs (CloudTrail, GCP audit logs, the Azure Activity Log) become \
+                  an IAM policy or role; flow logs become firewall rules; strace or audit logs \
+                  become a seccomp profile. The format is detected."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -46,8 +50,8 @@ struct Common {
     #[arg(short, long, value_enum)]
     format: Option<Format>,
 
-    /// Whose behaviour to use: a principal ARN, interface id or executable
-    /// (substring, or a glob such as '*'; repeatable)
+    /// Whose behaviour to use: a principal, an interface or VM, or an
+    /// executable (substring, or a glob such as '*'; repeatable)
     #[arg(short, long, value_name = "PATTERN")]
     subject: Vec<String>,
 
@@ -66,18 +70,24 @@ struct Generate {
     #[arg(short, long, value_name = "FILE")]
     output: Option<PathBuf>,
 
+    /// Policy to write, when it should not follow from the log: flow logs
+    /// from one cloud can become another cloud's firewall rules
+    #[arg(short, long, value_enum)]
+    policy: Option<Policy>,
+
     /// Also grant calls that were denied while the log was recorded
-    #[arg(long, help_heading = "IAM policy (CloudTrail)")]
+    #[arg(long, help_heading = "IAM policies and roles (audit logs)")]
     include_denied: bool,
 
-    /// Summarise an action's resources by path prefix beyond N
+    /// Summarise resources by path prefix (AWS) or resource groups by
+    /// subscription (Azure) beyond N
     #[arg(long, value_name = "N", default_value_t = 10, value_parser = at_least_one,
-          help_heading = "IAM policy (CloudTrail)")]
+          help_heading = "IAM policies and roles (audit logs)")]
     max_resources: usize,
 
     /// Widen peer addresses into at most N CIDR ranges per rule
     #[arg(long, value_name = "N", default_value_t = 8, value_parser = at_least_one,
-          help_heading = "Security group (flow logs)")]
+          help_heading = "Firewall rules (flow logs)")]
     max_peers: usize,
 
     /// What happens to unlisted syscalls; SCMP_ACT_LOG gives a dry run
@@ -101,6 +111,64 @@ struct Generate {
         help_heading = "Seccomp profile (strace, audit)"
     )]
     allow: Vec<String>,
+}
+
+/// The documents petrify can write.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum Policy {
+    AwsIam,
+    GcpRole,
+    AzureRole,
+    AwsSecurityGroup,
+    GcpFirewall,
+    AzureNsg,
+    Seccomp,
+}
+
+impl Policy {
+    /// The policy a log leads to when none is asked for.
+    fn default_for(format: Format) -> Policy {
+        match format {
+            Format::Cloudtrail => Policy::AwsIam,
+            Format::GcpAudit => Policy::GcpRole,
+            Format::AzureActivity => Policy::AzureRole,
+            // A flow CSV has no cloud of its own; AWS was here first.
+            Format::AwsFlow | Format::Netflow => Policy::AwsSecurityGroup,
+            Format::GcpFlow => Policy::GcpFirewall,
+            Format::AzureFlow => Policy::AzureNsg,
+            Format::Strace | Format::Auditd => Policy::Seccomp,
+        }
+    }
+
+    /// The kind of behaviour this policy is written from.
+    fn kind(self) -> Kind {
+        match self {
+            Policy::AwsIam => Kind::Api(Provider::Aws),
+            Policy::GcpRole => Kind::Api(Provider::Gcp),
+            Policy::AzureRole => Kind::Api(Provider::Azure),
+            Policy::AwsSecurityGroup | Policy::GcpFirewall | Policy::AzureNsg => Kind::Network,
+            Policy::Seccomp => Kind::Syscall,
+        }
+    }
+
+    /// What to call the document in messages.
+    fn label(self) -> &'static str {
+        match self {
+            Policy::AwsIam => cloud::aws::POLICY_NAME,
+            Policy::GcpRole => cloud::gcp::POLICY_NAME,
+            Policy::AzureRole => cloud::azure::POLICY_NAME,
+            Policy::AwsSecurityGroup => network::aws::POLICY_NAME,
+            Policy::GcpFirewall => network::gcp::POLICY_NAME,
+            Policy::AzureNsg => network::azure::POLICY_NAME,
+            Policy::Seccomp => syscalls::POLICY_NAME,
+        }
+    }
+
+    /// The name used on the command line.
+    fn name(self) -> String {
+        let value = self.to_possible_value().expect("no skipped variants");
+        value.get_name().to_string()
+    }
 }
 
 fn at_least_one(text: &str) -> std::result::Result<usize, String> {
@@ -139,7 +207,7 @@ fn run(command: &Command, notes: &mut Notes) -> Result<()> {
         Command::Show(common) => common,
         Command::Generate(generate) => &generate.common,
     };
-    let (collector, formats) = collect(common, notes)?;
+    let (collector, first, formats) = collect(common, notes)?;
     let subjects = collector.subjects();
     if subjects.is_empty() {
         return Err(Error(
@@ -183,10 +251,11 @@ fn run(command: &Command, notes: &mut Notes) -> Result<()> {
             ))
         }
         Command::Generate(options) => {
-            let (document, warnings) = collector.policy(&chosen, options)?;
+            let policy = options.policy.unwrap_or(Policy::default_for(first));
+            let (document, warnings) = collector.policy(policy, &chosen, options)?;
             warnings.iter().for_each(|warning| notes.add(warning));
             let text = serde_json::to_string_pretty(&document).expect("JSON value") + "\n";
-            let policy = collector.policy_name();
+            let policy = policy.label();
             match &options.output {
                 Some(path) => {
                     std::fs::write(path, text)
@@ -224,9 +293,17 @@ enum Collector {
 impl Collector {
     fn new(kind: Kind) -> Collector {
         match kind {
-            Kind::Api => Collector::Api(Default::default()),
+            Kind::Api(provider) => Collector::Api(cloud::Collector::new(provider)),
             Kind::Network => Collector::Network(Default::default()),
             Kind::Syscall => Collector::Syscall(Default::default()),
+        }
+    }
+
+    fn kind(&self) -> Kind {
+        match self {
+            Collector::Api(c) => Kind::Api(c.provider()),
+            Collector::Network(_) => Kind::Network,
+            Collector::Syscall(_) => Kind::Syscall,
         }
     }
 
@@ -242,8 +319,20 @@ impl Collector {
             (Collector::Api(c), Format::Cloudtrail) => {
                 cloudtrail::parse(reader, notes, &mut |event| c.add(event))
             }
-            (Collector::Network(c), Format::Vpcflow) => {
-                vpcflow::parse(reader, notes, &mut |event| c.add(event))
+            (Collector::Api(c), Format::GcpAudit) => {
+                gcp_audit::parse(reader, notes, &mut |event| c.add(event))
+            }
+            (Collector::Api(c), Format::AzureActivity) => {
+                azure_activity::parse(reader, notes, &mut |event| c.add(event))
+            }
+            (Collector::Network(c), Format::AwsFlow) => {
+                aws_flow::parse(reader, notes, &mut |event| c.add(event))
+            }
+            (Collector::Network(c), Format::GcpFlow) => {
+                gcp_flow::parse(reader, notes, &mut |event| c.add(event))
+            }
+            (Collector::Network(c), Format::AzureFlow) => {
+                azure_flow::parse(reader, notes, &mut |event| c.add(event))
             }
             (Collector::Network(c), Format::Netflow) => {
                 netflow::parse(reader, notes, &mut |event| c.add(event))
@@ -275,14 +364,6 @@ impl Collector {
         }
     }
 
-    fn policy_name(&self) -> &'static str {
-        match self {
-            Collector::Api(_) => cloud::POLICY_NAME,
-            Collector::Network(_) => network::POLICY_NAME,
-            Collector::Syscall(_) => syscalls::POLICY_NAME,
-        }
-    }
-
     fn describe(&self, subjects: &[String], options: &Common) -> Result<String> {
         Ok(match self {
             Collector::Api(c) => cloud::describe(&c.behavior(subjects)),
@@ -291,16 +372,42 @@ impl Collector {
         })
     }
 
-    fn policy(&self, subjects: &[String], options: &Generate) -> Result<(Value, Vec<String>)> {
+    fn policy(
+        &self,
+        policy: Policy,
+        subjects: &[String],
+        options: &Generate,
+    ) -> Result<(Value, Vec<String>)> {
+        if policy.kind() != self.kind() {
+            let fitting: Vec<String> = Policy::value_variants()
+                .iter()
+                .filter(|candidate| candidate.kind() == self.kind())
+                .map(|candidate| candidate.name())
+                .collect();
+            return Err(Error(format!(
+                "--policy {} cannot be written from this log, which leads to: {}",
+                policy.name(),
+                fitting.join(", ")
+            )));
+        }
         match self {
-            Collector::Api(c) => Ok(cloud::policy(
-                &c.behavior(subjects),
-                options.include_denied,
-                options.max_resources,
-            )),
+            Collector::Api(c) => {
+                let behavior = c.behavior(subjects);
+                Ok(match policy {
+                    Policy::GcpRole => cloud::gcp::policy(&behavior, options.include_denied),
+                    Policy::AzureRole => cloud::azure::policy(&behavior, options.max_resources),
+                    _ => {
+                        cloud::aws::policy(&behavior, options.include_denied, options.max_resources)
+                    }
+                })
+            }
             Collector::Network(c) => {
                 let behavior = c.behavior(subjects, &options.common.local)?;
-                Ok(network::policy(&behavior, options.max_peers))
+                Ok(match policy {
+                    Policy::GcpFirewall => network::gcp::policy(&behavior, options.max_peers),
+                    Policy::AzureNsg => network::azure::policy(&behavior, options.max_peers),
+                    _ => network::aws::policy(&behavior, options.max_peers),
+                })
             }
             Collector::Syscall(c) => syscalls::policy(
                 &c.behavior(subjects),
@@ -313,8 +420,9 @@ impl Collector {
 }
 
 /// Parse every input into one collector. Inputs may mix formats (an strace
-/// capture plus an audit log) but not kinds of behaviour.
-fn collect(options: &Common, notes: &mut Notes) -> Result<(Collector, BTreeSet<Format>)> {
+/// capture plus an audit log) but not kinds of behaviour. Also returns the
+/// first format read, which decides the default policy, and all of them.
+fn collect(options: &Common, notes: &mut Notes) -> Result<(Collector, Format, BTreeSet<Format>)> {
     let mut collector: Option<(Format, Collector)> = None;
     let mut formats = BTreeSet::new();
     for input in expand(&options.logs)? {
@@ -347,7 +455,7 @@ fn collect(options: &Common, notes: &mut Notes) -> Result<(Collector, BTreeSet<F
             .map_err(named)?;
     }
     match collector {
-        Some((_, collector)) => Ok((collector, formats)),
+        Some((first, collector)) => Ok((collector, first, formats)),
         None => Err(Error("no readable logs given".to_string())),
     }
 }

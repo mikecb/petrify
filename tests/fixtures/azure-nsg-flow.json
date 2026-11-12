@@ -1,0 +1,51 @@
+{
+ "records": [
+  {
+   "time": "2026-11-01T12:00:35.3899262Z",
+   "systemId": "66aa66aa-bb77-cc88-dd99-00ee00ee00ee",
+   "category": "NetworkSecurityGroupFlowEvent",
+   "resourceId": "/SUBSCRIPTIONS/AAAA1111-2222-3333-4444-555555555555/RESOURCEGROUPS/ORDERS/PROVIDERS/MICROSOFT.NETWORK/NETWORKSECURITYGROUPS/ORDERS-NSG",
+   "operationName": "NetworkSecurityGroupFlowEvents",
+   "properties": {
+    "Version": 2,
+    "flows": [
+     {
+      "rule": "DefaultRule_DenyAllInBound",
+      "flows": [
+       {
+        "mac": "000D3AF87856",
+        "flowTuples": [
+         "1793534402,192.0.2.190,10.5.16.4,28746,443,U,I,D,B,,,,"
+        ]
+       }
+      ]
+     },
+     {
+      "rule": "UserRule_allow-https",
+      "flows": [
+       {
+        "mac": "000D3AF87856",
+        "flowTuples": [
+         "1793534410,203.0.113.10,10.5.16.4,56509,443,T,I,A,B,,,,",
+         "1793534415,203.0.113.10,10.5.16.4,56509,443,T,I,A,E,10,1500,8,9000"
+        ]
+       }
+      ]
+     },
+     {
+      "rule": "DefaultRule_AllowInternetOutBound",
+      "flows": [
+       {
+        "mac": "000D3AF87856",
+        "flowTuples": [
+         "1793534377,10.5.16.4,203.0.113.118,59831,443,T,O,A,B,,,,",
+         "1793534379,10.5.16.4,203.0.113.118,59831,443,T,O,A,E,1,66,1,66"
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

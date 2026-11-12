@@ -1,0 +1,79 @@
+{
+ "records": [
+  {
+   "time": "2026-11-01T12:00:52.5625085Z",
+   "flowLogVersion": 4,
+   "flowLogGUID": "66aa66aa-bb77-cc88-dd99-00ee00ee00ee",
+   "macAddress": "00224800AABB",
+   "category": "FlowLogFlowEvent",
+   "flowLogResourceID": "/SUBSCRIPTIONS/AAAA1111-2222-3333-4444-555555555555/RESOURCEGROUPS/NETWORKWATCHERRG/PROVIDERS/MICROSOFT.NETWORK/NETWORKWATCHERS/NETWORKWATCHER_EASTUS/FLOWLOGS/ORDERS",
+   "targetResourceID": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/orders/providers/Microsoft.Network/virtualNetworks/orders",
+   "operationName": "FlowLogFlowEvent",
+   "flowRecords": {
+    "flows": [
+     {
+      "aclID": "00aa00aa-bb11-cc22-dd33-44ee44ee44ee",
+      "flowGroups": [
+       {
+        "rule": "DefaultRule_AllowInternetOutBound",
+        "flowTuples": [
+         "1793534400100,10.1.0.4,203.0.113.17,22730,443,6,O,B,NX,0,0,0,0",
+         "1793534400900,10.1.0.4,203.0.113.17,22730,443,6,O,E,NX,3,705,4,4569",
+         "1793534401100,10.1.0.4,198.51.100.84,36776,443,6,O,B,NX,0,0,0,0",
+         "1793534406100,10.1.0.4,198.51.100.84,36776,443,6,O,E,NX,22,2217,33,32466"
+        ]
+       },
+       {
+        "rule": "DefaultRule_AllowVnetOutBound",
+        "flowTuples": [
+         "1793534402100,10.1.0.4,10.1.1.5,50112,1433,6,O,B,NX,0,0,0,0",
+         "1793534402200,10.1.0.4,10.1.1.5,50112,1433,6,O,C,NX,40,9000,38,22000",
+         "1793534402300,10.1.0.4,168.63.129.16,50200,53,17,O,B,NX,0,0,0,0"
+        ]
+       },
+       {
+        "rule": "DefaultRule_AllowVnetInBound",
+        "flowTuples": [
+         "1793534403100,10.1.2.7,10.1.0.4,41822,8080,6,I,B,NX,0,0,0,0",
+         "1793534403900,10.1.2.7,10.1.0.4,41822,8080,6,I,E,NX,12,1800,10,5200",
+         "1793534404100,10.1.2.8,10.1.0.4,41900,8080,6,I,B,NX,0,0,0,0"
+        ]
+       },
+       {
+        "rule": "DefaultRule_DenyAllInBound",
+        "flowTuples": [
+         "1793534405100,192.0.2.66,10.1.0.4,55001,22,6,I,D,NX,0,0,0,0"
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "time": "2026-11-01T12:00:52.5625085Z",
+   "flowLogVersion": 4,
+   "flowLogGUID": "66aa66aa-bb77-cc88-dd99-00ee00ee00ee",
+   "macAddress": "00224800CCDD",
+   "category": "FlowLogFlowEvent",
+   "flowLogResourceID": "/SUBSCRIPTIONS/AAAA1111-2222-3333-4444-555555555555/RESOURCEGROUPS/NETWORKWATCHERRG/PROVIDERS/MICROSOFT.NETWORK/NETWORKWATCHERS/NETWORKWATCHER_EASTUS/FLOWLOGS/ORDERS",
+   "targetResourceID": "/subscriptions/aaaa1111-2222-3333-4444-555555555555/resourceGroups/orders/providers/Microsoft.Network/virtualNetworks/orders",
+   "operationName": "FlowLogFlowEvent",
+   "flowRecords": {
+    "flows": [
+     {
+      "aclID": "00aa00aa-bb11-cc22-dd33-44ee44ee44ee",
+      "flowGroups": [
+       {
+        "rule": "DefaultRule_AllowVnetInBound",
+        "flowTuples": [
+         "1793534402100,10.1.0.4,10.1.1.5,50112,1433,6,I,B,NX,0,0,0,0"
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

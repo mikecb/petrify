@@ -147,7 +147,12 @@ fn subject_patterns_select_and_must_match() {
 
 #[test]
 fn generate_security_group() {
-    let run = petrify(&["generate", &fixture("vpcflow.log"), "--subject", "eni-0aaa"]);
+    let run = petrify(&[
+        "generate",
+        &fixture("aws-flow.log"),
+        "--subject",
+        "eni-0aaa",
+    ]);
     assert_eq!(
         json_of(&run),
         json!({
@@ -184,11 +189,11 @@ fn generate_security_group() {
 
 #[test]
 fn show_network() {
-    let run = petrify(&["show", &fixture("vpcflow.log"), "-s", "eni-0aaa"]);
+    let run = petrify(&["show", &fixture("aws-flow.log"), "-s", "eni-0aaa"]);
     assert_eq!(run.code, 0);
     assert!(
         run.out
-            .starts_with("eni-0aaa  (13 events, vpcflow)\n\nNetwork behaviour of 10.0.1.5/32")
+            .starts_with("eni-0aaa  (13 events, aws-flow)\n\nNetwork behaviour of 10.0.1.5/32")
     );
     assert!(
         run.out
@@ -204,6 +209,234 @@ fn show_network() {
 
     let run = petrify(&["show", &fixture("netflow.csv"), "--local", "192.168.1.0/24"]);
     assert!(run.out.contains("Network behaviour of 192.168.1.0/24"));
+}
+
+#[test]
+fn gcp_audit_log_becomes_a_custom_role() {
+    let log = fixture("gcp-audit.json");
+    let run = petrify(&["show", &log, "-s", "orders-api"]);
+    assert!(run.out.starts_with(
+        "orders-api@shop-prod.iam.gserviceaccount.com  (10 events, gcp-audit)\n\n\
+         API calls: 7 actions across 5 services"
+    ));
+    assert!(run.out.contains("Denied (left out"));
+
+    let run = petrify(&["generate", &log, "-s", "orders-api"]);
+    assert_eq!(
+        json_of(&run),
+        json!({
+            "title": "petrify: orders-api@shop-prod.iam.gserviceaccount.com",
+            "description":
+                "Permissions observed in audit logs for orders-api@shop-prod.iam.gserviceaccount.com",
+            "stage": "GA",
+            "includedPermissions": [
+                "bigquery.jobs.create",
+                "cloudsql.instances.connect",
+                "pubsub.topics.publish",
+                "secretmanager.versions.access",
+                "storage.objects.create",
+                "storage.objects.get",
+                "storage.objects.list",
+            ],
+        })
+    );
+    assert!(run.err.contains("wrote GCP custom role"));
+    assert!(run.err.contains("bind it on the 9 resources"));
+
+    let run = petrify(&["generate", &log, "-s", "orders-api", "--include-denied"]);
+    assert!(run.out.contains("storage.objects.delete"));
+}
+
+#[test]
+fn gcp_flow_log_becomes_firewall_rules() {
+    let log = fixture("gcp-flow.jsonl");
+    let run = petrify(&["show", &log]);
+    assert!(run.out.contains("orders-api") && run.out.contains("orders-db"));
+
+    // The reporting VM's address is known, so even the database's single
+    // conversation needs no --local.
+    let run = petrify(&["show", &log, "-s", "orders-db"]);
+    assert!(run.out.contains("Network behaviour of 10.128.0.9/32"));
+    assert!(run.out.contains("tcp/5432     1 peer  10.128.0.5 (2)"));
+
+    let run = petrify(&["generate", &log, "-s", "orders-api"]);
+    let rules = json_of(&run);
+    let names: Vec<&str> = rules
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|rule| rule["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "petrify-ingress-tcp-443",
+            "petrify-egress-icmp",
+            "petrify-egress-tcp-443",
+            "petrify-egress-tcp-5432",
+            "petrify-egress-deny-all",
+            "petrify-egress-deny-all-v6",
+        ]
+    );
+    assert_eq!(
+        rules[0]["sourceRanges"],
+        json!(["198.51.100.20/32", "203.0.113.7/32"])
+    );
+    assert_eq!(
+        rules[3]["allowed"],
+        json!([{"IPProtocol": "tcp", "ports": ["5432"]}])
+    );
+    assert_eq!(rules[3]["destinationRanges"], json!(["10.128.0.9/32"]));
+    assert!(
+        run.err
+            .contains("wrote GCP firewall rules for orders-api from 9 events")
+    );
+    assert!(run.err.contains("targetTags"));
+}
+
+#[test]
+fn azure_activity_log_becomes_a_custom_role() {
+    let log = fixture("azure-activity.json");
+    let run = petrify(&["show", &log, "-s", "deployer"]);
+    assert!(run.out.starts_with(
+        "orders-api-deployer  (10 events, azure-activity)\n\n\
+         API calls: 4 actions across 4 services"
+    ));
+
+    let run = petrify(&["generate", &log, "-s", "deployer"]);
+    let subscription = "/subscriptions/aaaa1111-2222-3333-4444-555555555555";
+    assert_eq!(
+        json_of(&run),
+        json!({
+            "Name": "petrify: orders-api-deployer",
+            "IsCustom": true,
+            "Description": "Actions observed in the Activity Log for orders-api-deployer",
+            "Actions": [
+                "Microsoft.Compute/virtualMachines/restart/action",
+                "Microsoft.KeyVault/vaults/secrets/write",
+                "Microsoft.Network/networkSecurityGroups/securityRules/write",
+                "Microsoft.Storage/storageAccounts/listKeys/action",
+            ],
+            "NotActions": [],
+            "AssignableScopes": [
+                format!("{subscription}/resourceGroups/orders"),
+                format!("{subscription}/resourceGroups/shared"),
+            ],
+        })
+    );
+    assert!(run.err.contains("wrote Azure custom role"));
+    assert!(run.err.contains("but not reads or data-plane operations"));
+
+    let run = petrify(&["generate", &log, "-s", "deployer", "--max-resources", "1"]);
+    assert_eq!(json_of(&run)["AssignableScopes"], json!([subscription]));
+}
+
+#[test]
+fn azure_flow_logs_become_nsg_rules() {
+    let log = fixture("azure-flow.json");
+    let run = petrify(&["show", &log, "-s", "AABB"]);
+    assert!(
+        run.out.starts_with(
+            "00224800AABB  (11 events, azure-flow)\n\nNetwork behaviour of 10.1.0.4/32"
+        )
+    );
+    assert!(
+        run.out
+            .contains("tcp/8080    2 peers  10.1.2.7 (2), 10.1.2.8 (1)")
+    );
+    assert!(run.out.contains("tcp 192.0.2.66 -> 10.1.0.4:22  (1)"));
+
+    let run = petrify(&["generate", &log, "-s", "AABB"]);
+    let rules = json_of(&run);
+    let summary: Vec<(&str, i64, &str, &str)> = rules
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|rule| {
+            let properties = &rule["properties"];
+            (
+                rule["name"].as_str().unwrap(),
+                properties["priority"].as_i64().unwrap(),
+                properties["access"].as_str().unwrap(),
+                properties["destinationPortRange"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        summary,
+        [
+            ("petrify-in-tcp-8080", 100, "Allow", "8080"),
+            ("petrify-in-deny-all", 4096, "Deny", "*"),
+            ("petrify-out-tcp-443", 100, "Allow", "443"),
+            ("petrify-out-tcp-1433", 110, "Allow", "1433"),
+            ("petrify-out-udp-53", 120, "Allow", "53"),
+            ("petrify-out-deny-all", 4096, "Deny", "*"),
+        ]
+    );
+    assert_eq!(
+        rules[2]["properties"]["destinationAddressPrefixes"],
+        json!(["198.51.100.84/32", "203.0.113.17/32"])
+    );
+    assert!(run.err.contains("wrote Azure NSG rules"));
+
+    // The older NSG flow log format.
+    let run = petrify(&["show", &fixture("azure-nsg-flow.json")]);
+    assert!(run.out.starts_with("000D3AF87856  (5 events, azure-flow)"));
+    assert!(run.out.contains("udp 192.0.2.190 -> 10.5.16.4:443  (1)"));
+}
+
+#[test]
+fn flows_from_one_cloud_can_become_another_clouds_rules() {
+    let log = fixture("aws-flow.log");
+    let run = petrify(&[
+        "generate",
+        &log,
+        "-s",
+        "eni-0aaa",
+        "--policy",
+        "gcp-firewall",
+    ]);
+    assert_eq!(json_of(&run)[0]["name"], "petrify-ingress-tcp-443");
+    let run = petrify(&["generate", &log, "-s", "eni-0aaa", "-p", "azure-nsg"]);
+    assert_eq!(json_of(&run)[0]["name"], "petrify-in-tcp-443");
+    let run = petrify(&[
+        "generate",
+        &fixture("netflow.csv"),
+        "-p",
+        "aws-security-group",
+    ]);
+    assert!(json_of(&run).get("IpPermissions").is_some());
+
+    // Permissions are not translated between clouds, or into firewall rules.
+    let run = petrify(&["generate", &log, "-s", "eni-0aaa", "--policy", "gcp-role"]);
+    assert_eq!(run.code, 1);
+    assert!(run.err.contains(
+        "--policy gcp-role cannot be written from this log, \
+         which leads to: aws-security-group, gcp-firewall, azure-nsg"
+    ));
+    let run = petrify(&[
+        "generate",
+        &fixture("gcp-audit.json"),
+        "-s",
+        "alice",
+        "-p",
+        "aws-iam",
+    ]);
+    assert!(run.code == 1 && run.err.contains("which leads to: gcp-role"));
+}
+
+#[test]
+fn clouds_do_not_mix() {
+    let run = petrify(&[
+        "show",
+        &fixture("cloudtrail.json"),
+        &fixture("gcp-audit.json"),
+    ]);
+    assert_eq!(run.code, 1);
+    assert!(
+        run.err
+            .contains("is a gcp-audit log, which cannot be combined with the cloudtrail")
+    );
 }
 
 #[test]
@@ -287,7 +520,7 @@ fn seccomp_dry_run_profile_logs_instead_of_blocking() {
 
 #[test]
 fn kinds_of_log_do_not_mix() {
-    let run = petrify(&["show", &fixture("strace.log"), &fixture("vpcflow.log")]);
+    let run = petrify(&["show", &fixture("strace.log"), &fixture("aws-flow.log")]);
     assert_eq!(run.code, 1);
     assert!(run.err.contains("cannot be combined"));
 }
@@ -337,9 +570,12 @@ fn format_can_be_forced() {
     std::fs::write(&odd, "eni-1 10.0.0.1 10.0.0.2 1 2 6\n").unwrap();
     let run = petrify(&["show", odd.to_str().unwrap()]);
     assert!(run.code == 1 && run.err.contains("unrecognised format"));
-    let run = petrify(&["show", "--format", "vpcflow", odd.to_str().unwrap()]);
-    assert!(run.code == 1 && run.err.contains("no events"));
-    assert!(run.err.contains("unexpected number of fields"));
+    for name in ["aws-flow", "vpcflow"] {
+        // "vpcflow" is what 0.1 called the AWS format.
+        let run = petrify(&["show", "--format", name, odd.to_str().unwrap()]);
+        assert!(run.code == 1 && run.err.contains("no events"));
+        assert!(run.err.contains("unexpected number of fields"));
+    }
 }
 
 #[test]
@@ -355,7 +591,7 @@ fn errors_are_messages_not_panics() {
 
     let run = petrify(&[
         "show",
-        &fixture("vpcflow.log"),
+        &fixture("aws-flow.log"),
         "-s",
         "eni-0aaa",
         "--local",
@@ -364,5 +600,6 @@ fn errors_are_messages_not_panics() {
     assert!(run.code == 1 && run.err.contains("--local"));
 
     assert_eq!(petrify(&["generate"]).code, 2);
-    assert_eq!(petrify(&["--version"]).out, "petrify 0.1.0\n");
+    let version = format!("petrify {}\n", env!("CARGO_PKG_VERSION"));
+    assert_eq!(petrify(&["--version"]).out, version);
 }
