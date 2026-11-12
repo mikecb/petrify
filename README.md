@@ -192,3 +192,17 @@ second `policy` function beside the first.
 
 `src/syscall_tables.rs` is generated from kernel headers by
 `scripts/gen_syscall_tables.py` (needs `linux-libc-dev` and `cpp`).
+
+## Releasing
+
+Every pull request runs formatting, clippy and the tests on Linux and macOS.
+
+To release, raise `version` in `Cargo.toml` in a pull request (`cargo build`
+updates `Cargo.lock` to match), merge it, and push a tag `vX.Y.Z` on main. The
+Release workflow publishes only if the tag matches that version and is on
+main, the same checks pass on the tagged commit, and each binary builds and
+runs. It attaches static Linux binaries (x86_64, aarch64), macOS binaries
+(Apple silicon, Intel) and their SHA-256 checksums.
+
+A pull request that changes the release workflow runs the builds as a dry
+run, without publishing.

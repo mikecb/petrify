@@ -1,0 +1,12 @@
+version: 2
+updates:
+  # New crate and action versions arrive as pull requests, so they have to
+  # pass CI before they are used.
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
