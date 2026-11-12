@@ -1,0 +1,6 @@
+type=SECCOMP msg=audit(1730462400.101:881): auid=4294967295 uid=0 gid=0 ses=4294967295 pid=4021 comm="orders" exe="/usr/local/bin/orders" sig=0 arch=c000003e syscall=41 compat=0 ip=0x7f1c2a code=0x7ffc0000
+type=SECCOMP msg=audit(1730462400.102:882): auid=4294967295 uid=0 gid=0 ses=4294967295 pid=4021 comm="orders" exe="/usr/local/bin/orders" sig=0 arch=c000003e syscall=288 compat=0 ip=0x7f1c2a code=0x7ffc0000
+type=SYSCALL msg=audit(1730462400.200:883): arch=c000003e syscall=257 success=yes exit=3 a0=ffffff9c a1=7f0 a2=80000 a3=0 items=1 ppid=1 pid=977 auid=4294967295 uid=0 comm="sshd" exe="/usr/sbin/sshd" key="open"
+type=PATH msg=audit(1730462400.200:883): item=0 name="/etc/passwd" inode=131 dev=fd:00
+type=SYSCALL msg=audit(1730462400.300:884): arch=c00000b7 syscall=56 success=yes exit=3 pid=4021 comm="orders" exe="/usr/local/bin/orders" key=(null)ARCH=aarch64 SYSCALL=openat AUID="unset"
+type=SECCOMP msg=audit(1730462400.400:885): pid=4021 comm="orders" exe="/usr/local/bin/orders" sig=0 arch=c000003e syscall=99999 compat=0

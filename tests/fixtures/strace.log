@@ -1,0 +1,21 @@
+4021  execve("/usr/local/bin/orders", ["orders", "--serve"], 0x7ffd3b0 /* 12 vars */) = 0
+4021  brk(NULL)                         = 0x55d0c4a2e000
+4021  openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+4021  openat(AT_FDCWD, "/opt/missing.so", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or directory)
+4021  read(3, "\177ELF\2\1\1\0"..., 832) = 832
+4021  close(3)                          = 0
+4021  socket(AF_INET, SOCK_STREAM|SOCK_CLOEXEC, IPPROTO_TCP) = 4
+4021  bind(4, {sa_family=AF_INET, sin_port=htons(8080), sin_addr=inet_addr("0.0.0.0")}, 16) = 0
+4021  listen(4, 128)                    = 0
+4021  clone3({flags=CLONE_VM|CLONE_FS, exit_signal=SIGCHLD}, 88) = 4022
+4022  connect(5, {sa_family=AF_INET, sin_port=htons(5432), sin_addr=inet_addr("10.0.2.10")}, 16 <unfinished ...>
+4021  accept4(4, NULL, NULL, SOCK_CLOEXEC <unfinished ...>
+4022  <... connect resumed>)            = 0
+4022  openat(AT_FDCWD, "/var/log/orders.log", O_WRONLY|O_CREAT|O_APPEND, 0644) = 6
+4022  write(6, "ready\n", 6)            = 6
+4021  <... accept4 resumed>)            = 7
+4021  --- SIGTERM {si_signo=SIGTERM, si_code=SI_USER, si_pid=1, si_uid=0} ---
+4022  exit(0)                           = ?
+4022  +++ exited with 0 +++
+4021  exit_group(0)                     = ?
+4021  +++ exited with 0 +++

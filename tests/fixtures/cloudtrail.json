@@ -1,0 +1,820 @@
+{
+ "Records": [
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "s3.amazonaws.com",
+   "eventName": "GetObject",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "bucketName": "orders-data",
+    "key": "invoices/2026/0000.pdf"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "s3.amazonaws.com",
+   "eventName": "GetObject",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "bucketName": "orders-data",
+    "key": "invoices/2026/0001.pdf"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "s3.amazonaws.com",
+   "eventName": "GetObject",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "bucketName": "orders-data",
+    "key": "invoices/2026/0002.pdf"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "s3.amazonaws.com",
+   "eventName": "GetObject",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "bucketName": "orders-data",
+    "key": "invoices/2026/0003.pdf"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "s3.amazonaws.com",
+   "eventName": "GetObject",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "bucketName": "orders-data",
+    "key": "invoices/2026/0004.pdf"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "s3.amazonaws.com",
+   "eventName": "GetObject",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "bucketName": "orders-data",
+    "key": "invoices/2026/0005.pdf"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "s3.amazonaws.com",
+   "eventName": "GetObject",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "bucketName": "orders-data",
+    "key": "invoices/2026/0006.pdf"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "s3.amazonaws.com",
+   "eventName": "GetObject",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "bucketName": "orders-data",
+    "key": "invoices/2026/0007.pdf"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "s3.amazonaws.com",
+   "eventName": "GetObject",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "bucketName": "orders-data",
+    "key": "invoices/2026/0008.pdf"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "s3.amazonaws.com",
+   "eventName": "GetObject",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "bucketName": "orders-data",
+    "key": "invoices/2026/0009.pdf"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "s3.amazonaws.com",
+   "eventName": "GetObject",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "bucketName": "orders-data",
+    "key": "invoices/2026/0010.pdf"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "s3.amazonaws.com",
+   "eventName": "GetObject",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "bucketName": "orders-data",
+    "key": "invoices/2026/0011.pdf"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "s3.amazonaws.com",
+   "eventName": "GetObject",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "bucketName": "orders-data",
+    "key": "invoices/2026/0012.pdf"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "s3.amazonaws.com",
+   "eventName": "GetObject",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "bucketName": "orders-data",
+    "key": "invoices/2026/0013.pdf"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "s3.amazonaws.com",
+   "eventName": "PutObject",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "bucketName": "orders-data",
+    "key": "exports/latest.csv"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "s3.amazonaws.com",
+   "eventName": "ListObjectsV2",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "bucketName": "orders-data",
+    "prefix": "invoices/"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "s3.amazonaws.com",
+   "eventName": "HeadObject",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "bucketName": "orders-data",
+    "key": "config/app.json"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "s3.amazonaws.com",
+   "eventName": "CopyObject",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "bucketName": "orders-archive",
+    "key": "2026/latest.csv",
+    "x-amz-copy-source": "orders-data/exports/latest.csv"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "s3.amazonaws.com",
+   "eventName": "DeleteObject",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "bucketName": "orders-data",
+    "key": "exports/old.csv"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333",
+   "errorCode": "AccessDenied",
+   "errorMessage": "Access Denied"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "dynamodb.amazonaws.com",
+   "eventName": "Query",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "tableName": "Orders",
+    "indexName": "by-customer"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333",
+   "resources": [
+    {
+     "accountId": "111122223333",
+     "type": "AWS::DynamoDB::Table",
+     "ARN": "arn:aws:dynamodb:us-east-1:111122223333:table/Orders"
+    }
+   ]
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "dynamodb.amazonaws.com",
+   "eventName": "PutItem",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "tableName": "Orders"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "kms.amazonaws.com",
+   "eventName": "Decrypt",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "encryptionAlgorithm": "SYMMETRIC_DEFAULT"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333",
+   "resources": [
+    {
+     "accountId": "111122223333",
+     "type": "AWS::KMS::Key",
+     "ARN": "arn:aws:kms:us-east-1:111122223333:key/1234abcd-12ab-34cd-56ef-1234567890ab"
+    }
+   ]
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "lambda.amazonaws.com",
+   "eventName": "Invoke",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "functionName": "send-receipt"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "lambda.amazonaws.com",
+   "eventName": "GetFunction20150331v2",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "functionName": "send-receipt"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "sqs.amazonaws.com",
+   "eventName": "SendMessage",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "queueUrl": "https://sqs.us-east-1.amazonaws.com/111122223333/order-events"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "secretsmanager.amazonaws.com",
+   "eventName": "GetSecretValue",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "secretId": "orders/db"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "monitoring.amazonaws.com",
+   "eventName": "PutMetricData",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "namespace": "Orders"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "sts.amazonaws.com",
+   "eventName": "AssumeRole",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "roleArn": "arn:aws:iam::444455556666:role/partner-read",
+    "roleSessionName": "x"
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333",
+   "resources": [
+    {
+     "accountId": "444455556666",
+     "type": "AWS::IAM::Role",
+     "ARN": "arn:aws:iam::444455556666:role/partner-read"
+    }
+   ]
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AssumedRole",
+    "principalId": "AROAEXAMPLE:i-0abc",
+    "arn": "arn:aws:sts::111122223333:assumed-role/orders-api/i-0abc",
+    "accountId": "111122223333",
+    "sessionContext": {
+     "sessionIssuer": {
+      "type": "Role",
+      "arn": "arn:aws:iam::111122223333:role/orders-api",
+      "userName": "orders-api"
+     }
+    }
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "ec2.amazonaws.com",
+   "eventName": "DescribeInstances",
+   "awsRegion": "us-east-1",
+   "requestParameters": {
+    "instancesSet": {}
+   },
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "IAMUser",
+    "arn": "arn:aws:iam::111122223333:user/alice",
+    "accountId": "111122223333",
+    "userName": "alice"
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "s3.amazonaws.com",
+   "eventName": "ListBuckets",
+   "awsRegion": "us-east-1",
+   "requestParameters": null,
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "AWSService",
+    "invokedBy": "s3.amazonaws.com"
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "kms.amazonaws.com",
+   "eventName": "Decrypt",
+   "awsRegion": "us-east-1",
+   "requestParameters": null,
+   "eventType": "AwsApiCall",
+   "recipientAccountId": "111122223333"
+  },
+  {
+   "eventVersion": "1.09",
+   "userIdentity": {
+    "type": "IAMUser",
+    "arn": "arn:aws:iam::111122223333:user/alice",
+    "accountId": "111122223333",
+    "userName": "alice"
+   },
+   "eventTime": "2026-11-01T12:00:00Z",
+   "eventSource": "signin.amazonaws.com",
+   "eventName": "ConsoleLogin",
+   "awsRegion": "us-east-1",
+   "requestParameters": null,
+   "eventType": "AwsConsoleSignIn",
+   "recipientAccountId": "111122223333"
+  }
+ ]
+}
