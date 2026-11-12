@@ -1,10 +1,11 @@
 //! Cloud API behaviour -> AWS IAM policy.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
 
 use super::Behavior;
+use crate::prefix::generalize;
 use crate::text::{commas, plural};
 
 pub const POLICY_NAME: &str = "IAM policy";
@@ -81,77 +82,11 @@ fn scalar<S: AsRef<str>>(values: &[S]) -> Value {
     }
 }
 
-/// Shrink a resource list to at most `limit` entries by replacing the
-/// deepest path segments with wildcards, deepest first.
-///
-/// An application that wrote a thousand objects under `uploads/2024/` was not
-/// granted those thousand keys; it was granted the prefix. Resources without
-/// a path (a queue, a function) are never merged, so the result can still
-/// exceed the limit.
-pub fn generalize(resources: &BTreeSet<String>, limit: usize) -> Vec<String> {
-    if resources.contains("*") {
-        return vec!["*".to_string()];
-    }
-    let mut paths: BTreeSet<Vec<&str>> = prune(
-        resources
-            .iter()
-            .map(|resource| resource.split('/').collect())
-            .collect(),
-    );
-    while paths.len() > limit {
-        let depth = paths.iter().map(Vec::len).max().unwrap_or(0);
-        if depth < 2 {
-            break; // nothing left with a path to shorten
-        }
-        let widened: BTreeSet<Vec<&str>> = paths
-            .iter()
-            .map(|path| {
-                let mut path = path.clone();
-                if path.len() == depth && path[depth - 1] != "*" {
-                    path[depth - 1] = "*"; // a/b/c -> a/b/*
-                } else if path.len() == depth && depth > 2 {
-                    path.truncate(depth - 2); // a/b/* -> a/*, but never a/* -> *
-                    path.push("*");
-                }
-                path
-            })
-            .collect();
-        if widened == paths {
-            break;
-        }
-        paths = prune(widened);
-    }
-    let mut out: Vec<String> = paths.iter().map(|path| path.join("/")).collect();
-    out.sort();
-    out
-}
-
-/// Drop paths already covered by a wildcard elsewhere in the set.
-fn prune(paths: BTreeSet<Vec<&str>>) -> BTreeSet<Vec<&str>> {
-    let wildcards: BTreeSet<Vec<&str>> = paths
-        .iter()
-        .filter(|path| path.last() == Some(&"*"))
-        .map(|path| path[..path.len() - 1].to_vec())
-        .collect();
-    paths
-        .into_iter()
-        .filter(|path| {
-            // A wildcard is not covered by its own prefix.
-            let own = usize::from(path.last() == Some(&"*"));
-            !(1..path.len() - own).any(|n| wildcards.contains(&path[..n]))
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::cloud::testing::{behavior, call};
     use crate::events::Provider::Aws;
-
-    fn set(items: impl IntoIterator<Item = String>) -> BTreeSet<String> {
-        items.into_iter().collect()
-    }
 
     #[test]
     fn denied_calls_are_reported_but_not_granted() {
@@ -186,46 +121,6 @@ mod tests {
                 .iter()
                 .any(|note| note.starts_with("1 action granted on \"*\""))
         );
-    }
-
-    #[test]
-    fn generalize_collapses_deepest_paths_first() {
-        let mut keys = set((0..50).map(|n| format!("arn:aws:s3:::b/up/2026/{n}.jpg")));
-        keys.insert("arn:aws:s3:::b/config.json".to_string());
-        assert_eq!(
-            generalize(&keys, 10),
-            ["arn:aws:s3:::b/config.json", "arn:aws:s3:::b/up/2026/*"]
-        );
-    }
-
-    #[test]
-    fn generalize_keeps_going_up_but_never_past_the_bucket() {
-        let keys = set((0..50).map(|n| format!("arn:aws:s3:::b/tenant-{n}/data/file")));
-        assert_eq!(generalize(&keys, 10), ["arn:aws:s3:::b/*"]);
-        let buckets = set([
-            "arn:aws:s3:::a/*".to_string(),
-            "arn:aws:s3:::b/*".to_string(),
-        ]);
-        assert_eq!(
-            generalize(&buckets, 1),
-            ["arn:aws:s3:::a/*", "arn:aws:s3:::b/*"]
-        );
-    }
-
-    #[test]
-    fn generalize_leaves_pathless_resources_alone() {
-        let queues = set((0..5).map(|n| format!("arn:aws:sqs:us-east-1:1:q{n}")));
-        assert_eq!(
-            generalize(&queues, 2),
-            queues.iter().cloned().collect::<Vec<_>>()
-        );
-        let any = set(["*".to_string(), "arn:aws:s3:::b".to_string()]);
-        assert_eq!(generalize(&any, 10), ["*"]);
-        let covered = set([
-            "arn:aws:s3:::b/*".to_string(),
-            "arn:aws:s3:::b/k".to_string(),
-        ]);
-        assert_eq!(generalize(&covered, 10), ["arn:aws:s3:::b/*"]);
     }
 
     #[test]

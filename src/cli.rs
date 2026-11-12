@@ -12,11 +12,12 @@ use crate::events::{Arch, Error, Notes, Provider, Result};
 use crate::inputs::expand;
 use crate::sources::{
     Format, Kind, auditd, aws_flow, azure_activity, azure_flow, cloudtrail, gcp_audit, gcp_flow,
-    netflow, strace,
+    k8s_audit, netflow, strace,
 };
 use crate::syscalls::DefaultAction;
 use crate::text::{commas, plural};
-use crate::{cloud, network, syscalls};
+use crate::workloads::admission::Action;
+use crate::{cloud, network, syscalls, workloads};
 
 #[derive(Parser)]
 #[command(
@@ -24,8 +25,9 @@ use crate::{cloud, network, syscalls};
     version,
     about = "Turn what an application was observed doing into a policy that lets it do nothing else.",
     after_help = "Cloud audit logs (CloudTrail, GCP audit logs, the Azure Activity Log) become \
-                  an IAM policy or role; flow logs become firewall rules; strace or audit logs \
-                  become a seccomp profile. The format is detected."
+                  an IAM policy or role; flow logs become firewall rules; a Kubernetes audit log \
+                  becomes an admission policy; strace or audit logs become a seccomp profile. \
+                  The format is detected."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -50,8 +52,8 @@ struct Common {
     #[arg(short, long, value_enum)]
     format: Option<Format>,
 
-    /// Whose behaviour to use: a principal, an interface or VM, or an
-    /// executable (substring, or a glob such as '*'; repeatable)
+    /// Whose behaviour to use: a principal, an interface or VM, a namespace,
+    /// or an executable (substring, or a glob such as '*'; repeatable)
     #[arg(short, long, value_name = "PATTERN")]
     subject: Vec<String>,
 
@@ -90,6 +92,22 @@ struct Generate {
           help_heading = "Firewall rules (flow logs)")]
     max_peers: usize,
 
+    /// What a request that fails the policy meets; warn and audit give a
+    /// dry run [default: deny]
+    #[arg(
+        long,
+        value_enum,
+        value_name = "ACTION[,...]",
+        value_delimiter = ',',
+        help_heading = "Admission policy (Kubernetes audit logs)"
+    )]
+    validation_action: Vec<Action>,
+
+    /// Summarise image repositories by registry path beyond N
+    #[arg(long, value_name = "N", default_value_t = 20, value_parser = at_least_one,
+          help_heading = "Admission policy (Kubernetes audit logs)")]
+    max_images: usize,
+
     /// What happens to unlisted syscalls; SCMP_ACT_LOG gives a dry run
     #[arg(
         long,
@@ -122,6 +140,7 @@ enum Policy {
     AwsSecurityGroup,
     GcpFirewall,
     AzureNsg,
+    K8sAdmission,
     Seccomp,
 }
 
@@ -136,6 +155,7 @@ impl Policy {
             Format::AwsFlow | Format::Netflow => Policy::AwsSecurityGroup,
             Format::GcpFlow => Policy::GcpFirewall,
             Format::AzureFlow => Policy::AzureNsg,
+            Format::K8sAudit => Policy::K8sAdmission,
             Format::Strace | Format::Auditd => Policy::Seccomp,
         }
     }
@@ -147,6 +167,7 @@ impl Policy {
             Policy::GcpRole => Kind::Api(Provider::Gcp),
             Policy::AzureRole => Kind::Api(Provider::Azure),
             Policy::AwsSecurityGroup | Policy::GcpFirewall | Policy::AzureNsg => Kind::Network,
+            Policy::K8sAdmission => Kind::Workload,
             Policy::Seccomp => Kind::Syscall,
         }
     }
@@ -160,6 +181,7 @@ impl Policy {
             Policy::AwsSecurityGroup => network::aws::POLICY_NAME,
             Policy::GcpFirewall => network::gcp::POLICY_NAME,
             Policy::AzureNsg => network::azure::POLICY_NAME,
+            Policy::K8sAdmission => workloads::admission::POLICY_NAME,
             Policy::Seccomp => syscalls::POLICY_NAME,
         }
     }
@@ -288,6 +310,7 @@ enum Collector {
     Api(cloud::Collector),
     Network(network::Collector),
     Syscall(syscalls::Collector),
+    Workload(workloads::Collector),
 }
 
 impl Collector {
@@ -296,6 +319,7 @@ impl Collector {
             Kind::Api(provider) => Collector::Api(cloud::Collector::new(provider)),
             Kind::Network => Collector::Network(Default::default()),
             Kind::Syscall => Collector::Syscall(Default::default()),
+            Kind::Workload => Collector::Workload(Default::default()),
         }
     }
 
@@ -304,6 +328,7 @@ impl Collector {
             Collector::Api(c) => Kind::Api(c.provider()),
             Collector::Network(_) => Kind::Network,
             Collector::Syscall(_) => Kind::Syscall,
+            Collector::Workload(_) => Kind::Workload,
         }
     }
 
@@ -337,6 +362,9 @@ impl Collector {
             (Collector::Network(c), Format::Netflow) => {
                 netflow::parse(reader, notes, &mut |event| c.add(event))
             }
+            (Collector::Workload(c), Format::K8sAudit) => {
+                k8s_audit::parse(reader, notes, &mut |event| c.add(event))
+            }
             (Collector::Syscall(c), Format::Strace) => {
                 strace::parse(reader, notes, &mut |event| c.add(event))
             }
@@ -352,6 +380,7 @@ impl Collector {
             Collector::Api(c) => c.subjects(),
             Collector::Network(c) => c.subjects(),
             Collector::Syscall(c) => c.subjects(),
+            Collector::Workload(c) => c.subjects(),
         }
     }
 
@@ -361,6 +390,7 @@ impl Collector {
             Collector::Api(_) => cloud::SUBJECT,
             Collector::Network(_) => network::SUBJECT,
             Collector::Syscall(_) => syscalls::SUBJECT,
+            Collector::Workload(_) => workloads::SUBJECT,
         }
     }
 
@@ -369,6 +399,7 @@ impl Collector {
             Collector::Api(c) => cloud::describe(&c.behavior(subjects)),
             Collector::Network(c) => network::describe(&c.behavior(subjects, &options.local)?),
             Collector::Syscall(c) => syscalls::describe(&c.behavior(subjects)),
+            Collector::Workload(c) => workloads::describe(&c.behavior(subjects)),
         })
     }
 
@@ -414,6 +445,11 @@ impl Collector {
                 options.default_action,
                 options.arch,
                 &options.allow,
+            ),
+            Collector::Workload(c) => workloads::admission::policy(
+                &c.behavior(subjects),
+                &options.validation_action,
+                options.max_images,
             ),
         }
     }
