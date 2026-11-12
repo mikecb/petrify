@@ -9,6 +9,7 @@ lets the application do that and nothing else.
 | Google Cloud Audit Logs                               | permissions checked           | IAM custom role                                             |
 | Azure Activity Log                                    | Resource Manager operations   | custom role                                                 |
 | Flow logs from AWS, Google Cloud or Azure; flow CSVs  | who connects to whom          | security group, VPC firewall rules, or NSG rules            |
+| Kubernetes API server audit log                       | what was deployed             | ValidatingAdmissionPolicy                                   |
 | `strace` output, Linux audit records                  | system calls                  | seccomp profile                                             |
 
 ```console
@@ -28,9 +29,12 @@ petrify: wrote IAM policy to policy.json for arn:aws:iam::111122223333:role/orde
 
 ## Status
 
-Version 0.2. How far each path has been tested:
+Version 0.3. How far each path has been tested:
 
 - **Seccomp**: run end to end against a real container runtime.
+- **Kubernetes admission**: run end to end against a real API server (k3s,
+  Kubernetes 1.34): a policy generated from its audit log was applied and
+  then tried with requests it should admit and refuse.
 - **AWS** (IAM policy, security group): fixture logs only.
 - **Google Cloud and Azure**: fixture logs only. Their formats were checked
   against the vendors' documentation, published API definitions and public
@@ -63,7 +67,7 @@ is detected; `--format` overrides it.
 
 **One subject at a time.** A log usually covers several actors, and a policy
 that blends them is too broad for each. petrify calls the actor the *subject*:
-the principal, the network interface or VM, or the executable. With several in
+the principal, the network interface or VM, the namespace, or the executable. With several in
 a log, `show` lists them and `generate` refuses until you pick with `--subject`
 (a substring, or a glob such as `'*'`; repeatable).
 
@@ -260,6 +264,83 @@ CSV with a header naming source, destination, ports and protocol (`nfdump -o
 csv` and similar) is read as flows with no cloud of its own: the default
 output is an AWS security group, and `--policy` picks another.
 
+### Admission policy from a Kubernetes audit log
+
+```sh
+petrify show audit.log                       # lists the namespaces
+petrify generate audit.log -s orders -o policy.json
+kubectl apply -f policy.json
+```
+
+The subject is a namespace. The output is a `ValidatingAdmissionPolicy` and
+the binding that applies it to that namespace. Both are built into the API
+server (Kubernetes 1.30 and later), so there is nothing to install. From then
+on, a pod in that namespace is admitted only if:
+
+- every container's **image** comes from a repository that was observed, at
+  any tag or digest (beyond `--max-images` repositories, default 20, they are
+  summarised by registry path);
+- its **service account** was observed;
+- it has no **privileged** container, **host namespace** (`hostNetwork`,
+  `hostPID`, `hostIPC`), added **capability** or **hostPath** volume beyond
+  the ones observed. Whatever was observed stays allowed, and a note says so.
+
+The policy checks pods, including ephemeral debug containers, and also
+Deployments, StatefulSets, DaemonSets, ReplicaSets, Jobs and CronJobs, so a
+Deployment asking for an image the policy forbids is refused when it is
+applied, not when its pods quietly fail to appear.
+
+**The audit policy has to record the objects.** Events at the `Metadata` level
+say that a pod was created but not what was in it. Use `RequestResponse`,
+which records each object as stored, after mutating webhooks have added to it;
+`Request` works too, but shows pods as they were sent, without, say, a service
+mesh's sidecar, and petrify notes when that is all it had.
+
+```yaml
+apiVersion: audit.k8s.io/v1
+kind: Policy
+omitStages: ["RequestReceived"]
+rules:
+  - level: RequestResponse
+    resources:
+      - group: ""
+        resources: ["pods", "pods/ephemeralcontainers", "replicationcontrollers"]
+      - group: "apps"
+        resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+      - group: "batch"
+        resources: ["jobs", "cronjobs"]
+  - level: Metadata
+```
+
+**Dry run first.** A policy built from a short recording will refuse the
+workload nobody deployed that week.
+
+```sh
+# 1. Violations are admitted, with a warning to the client and an annotation
+#    in the audit log (validation.policy.admission.k8s.io/validation_failure).
+petrify generate audit.log -s orders --validation-action warn,audit -o policy.json
+kubectl apply -f policy.json
+
+# 2. Whatever was admitted is in the audit log now. Read the longer log.
+petrify generate audit.log -s orders --validation-action warn,audit -o policy.json
+
+# 3. When the warnings stop, drop --validation-action to enforce.
+```
+
+What it does not do:
+
+- **It restricts; it does not require.** Nothing here insists on
+  `runAsNonRoot`, a read-only root filesystem or dropped capabilities. Pod
+  Security Admission does that, and the two work together: Pod Security says
+  what no pod may do, petrify says which images and identities this namespace
+  runs.
+- It does not check image signatures or pin digests, and of the volume types
+  only `hostPath` is restricted.
+- Server-side dry runs in the log are ignored, since they deployed nothing.
+- Objects that are being deleted are exempt, so that something which predates
+  the policy can still be cleaned up. Any other change to such an object is
+  refused until it conforms.
+
 ### Seccomp profile from strace or audit records
 
 ```sh
@@ -306,9 +387,10 @@ needs is for you to judge.
 
 - **Unexercised behaviour is denied.** The monthly job, the error path and the
   failover that did not happen during the recording are not in the policy.
-  Record for long enough, then roll out gradually: `SCMP_ACT_LOG` for seccomp;
-  for IAM and security groups, apply to one instance and run petrify on the
-  new logs, where denied calls and rejected flows show up by name.
+  Record for long enough, then roll out gradually: `SCMP_ACT_LOG` for seccomp
+  and `--validation-action warn,audit` for Kubernetes; for IAM and firewall
+  rules, apply to one instance and run petrify on the new logs, where denied
+  calls and rejected flows show up by name.
 - **Audit logs omit things.**
   - CloudTrail records data events (S3 objects, Lambda invokes, DynamoDB
     items) only if the trail is set to, and never records permissions that
@@ -334,6 +416,7 @@ needs is for you to judge.
 src/sources/    one module per log format -> normalised events
 src/cloud/      API calls -> IAM policy (aws), custom role (gcp, azure)
 src/network/    flows     -> security group (aws), firewall rules (gcp), NSG rules (azure)
+src/workloads/  workloads -> Kubernetes ValidatingAdmissionPolicy
 src/syscalls.rs syscalls  -> seccomp profile
 src/cli.rs      argument parsing, subject and policy selection, output
 tests/          end-to-end tests against tests/fixtures/

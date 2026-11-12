@@ -3,7 +3,7 @@
 Where petrify is, and where it could go next. The order within each section is
 roughly the order of value; nothing here is scheduled.
 
-## Today (0.2)
+## Today (0.3)
 
 | Log                                  | Policy                   | Tested against                         |
 | ------------------------------------ | ------------------------ | -------------------------------------- |
@@ -13,10 +13,11 @@ roughly the order of value; nothing here is scheduled.
 | AWS VPC Flow Logs, flow CSV          | security group rules     | hand-written fixtures only             |
 | Google Cloud VPC Flow Logs           | VPC firewall rules       | hand-written fixtures only             |
 | Azure VNet and NSG flow logs         | NSG security rules       | hand-written fixtures only             |
+| Kubernetes API server audit log      | ValidatingAdmissionPolicy | a real API server (k3s, Kubernetes 1.34) |
 | `strace`, audit / kernel-log records | seccomp profile          | a real container under Docker and runc |
 
-The seccomp path has run end to end. None of the cloud paths has yet met a
-real log or a real account, which is the first thing to fix. The Google Cloud
+The seccomp and Kubernetes paths have run end to end. None of the cloud paths
+has yet met a real log or a real account, which is the first thing to fix. The Google Cloud
 and Azure formats were written from the vendors' documentation, API
 definitions and public sample logs.
 
@@ -78,6 +79,10 @@ Each of these is a second `policy` function over an existing behaviour model.
   is how most of them are applied, and it would replace the shell loops the
   README needs for Google Cloud and Azure today.
 - **Kubernetes NetworkPolicy** and **nftables** rules from flows.
+- **Kubernetes RBAC Roles** from the audit log petrify already reads: who
+  used which verbs on which resources. That is the IAM policy of a cluster.
+- **Kyverno and Gatekeeper** output for the admission behaviour, for clusters
+  that already standardise on one of them.
 - **systemd hardening** from a trace: `SystemCallFilter=`, `IPAddressAllow=`,
   `ReadWritePaths=`, `RestrictAddressFamilies=`.
 - **AppArmor and Landlock** from the files, executables and sockets a trace
@@ -95,6 +100,14 @@ Each of these is a second `policy` function over an existing behaviour model.
   service tags and application security groups. That fixes the commonest
   reason a rule widens to `0.0.0.0/0`: a cloud service with many addresses.
 - **Port ranges**, for peers that speak on many adjacent ports.
+
+- **Kubernetes admission that requires as well as restricts.** Where every
+  observed pod ran as non-root, with a read-only root filesystem, without
+  privilege escalation or with all capabilities dropped, keep it that way.
+  Then more of the pod spec: volume types, host ports, sysctls, user and
+  group IDs, seccomp and AppArmor profiles.
+- **Image digests**: allow only the digests observed, for namespaces that
+  deploy by digest.
 
 ## 5. macOS: Santa rules
 
@@ -134,10 +147,12 @@ Nothing has been tested there yet.
 - **Syscalls**: eBPF tracers (Tetragon, Tracee, Falco), `perf trace`, and
   `strace -c` summaries. These can trace a container from its first
   instruction, which removes the dry-run loop.
-- **Cloud**: Kubernetes audit logs to RBAC roles; Google Cloud firewall rule
-  logs, which say what was denied, as its flow logs cannot; reading CloudTrail
-  Lake, Athena, CloudWatch Logs, Cloud Logging and Azure Monitor directly
-  rather than from exported files.
+- **Cloud**: Google Cloud firewall rule logs, which say what was denied, as
+  its flow logs cannot; reading CloudTrail Lake, Athena, CloudWatch Logs,
+  Cloud Logging and Azure Monitor directly rather than from exported files.
+- **Kubernetes**: admission dry-run results. An audit log records which
+  requests would have failed a policy in warn or audit mode; `show` could
+  list exactly those.
 
 ## Not planned
 

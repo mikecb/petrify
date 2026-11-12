@@ -440,6 +440,124 @@ fn clouds_do_not_mix() {
 }
 
 #[test]
+fn kubernetes_audit_log_becomes_an_admission_policy() {
+    // The fixture is a trimmed audit log from a real API server.
+    let log = fixture("k8s-audit.log");
+    let run = petrify(&["show", &log]);
+    assert!(run.out.starts_with("The log covers 3 namespaces."));
+
+    let run = petrify(&["show", &log, "-s", "orders"]);
+    assert!(run.out.starts_with(
+        "orders  (7 events, k8s-audit)\n\n\
+         Workloads: 6 admitted (3 Pods, 1 CronJob, 1 Deployment, 1 ReplicaSet), \
+         1 rejected by the API server\n"
+    ));
+    for expected in [
+        "Images:\n  registry.example.com/shop/orders-api  (4)\n",
+        "  busybox  (1)\n",
+        "Service accounts:\n  orders-api  (4)\n  default  (2)\n",
+        "Added capabilities:\n  NET_BIND_SERVICE  (4)\n",
+        "hostPath volumes: none\n",
+        "Privileged containers: none\nHost namespaces: none\n",
+    ] {
+        assert!(
+            run.out.contains(expected),
+            "missing {expected:?} in:\n{}",
+            run.out
+        );
+    }
+
+    let run = petrify(&["generate", &log, "-s", "orders"]);
+    let list = json_of(&run);
+    assert_eq!(list["kind"], "List");
+    let (policy, binding) = (&list["items"][0], &list["items"][1]);
+    assert_eq!(policy["kind"], "ValidatingAdmissionPolicy");
+    assert_eq!(policy["metadata"]["name"], "petrify-orders");
+    let validations = policy["spec"]["validations"].as_array().unwrap();
+    assert_eq!(validations.len(), 8);
+    let images = validations[0]["expression"].as_str().unwrap();
+    assert!(images.contains(
+        "[\"busybox\",\"registry.example.com/shop/orders-api\",\
+         \"registry.example.com/shop/orders-migrate\",\"registry.example.com/shop/report\"]"
+    ));
+    assert!(
+        validations[1]["expression"]
+            .as_str()
+            .unwrap()
+            .ends_with("in [\"default\",\"orders-api\"]")
+    );
+    assert_eq!(binding["spec"]["policyName"], "petrify-orders");
+    assert_eq!(binding["spec"]["validationActions"], json!(["Deny"]));
+    assert!(
+        run.err
+            .contains("wrote validating admission policy for orders from 7 events")
+    );
+    assert!(!run.err.contains("note:"));
+}
+
+#[test]
+fn admission_policy_options() {
+    let log = fixture("k8s-audit.log");
+    let run = petrify(&[
+        "generate",
+        &log,
+        "-s",
+        "orders",
+        "--validation-action",
+        "warn,audit",
+    ]);
+    assert_eq!(
+        json_of(&run)["items"][1]["spec"]["validationActions"],
+        json!(["Warn", "Audit"])
+    );
+    let run = petrify(&[
+        "generate",
+        &log,
+        "-s",
+        "orders",
+        "--validation-action",
+        "deny,warn",
+    ]);
+    assert!(run.code == 1 && run.err.contains("together"));
+
+    let run = petrify(&["generate", &log, "-s", "orders", "--max-images", "1"]);
+    let images = json_of(&run)["items"][0]["spec"]["validations"][0]["expression"].clone();
+    assert!(
+        images
+            .as_str()
+            .unwrap()
+            .contains("[\"registry.example.com/shop/\"].exists(p,")
+    );
+    assert!(
+        run.err
+            .contains("any image under registry.example.com/shop/ is allowed")
+    );
+
+    // What a namespace was seen to need stays allowed, and is said.
+    let run = petrify(&["generate", &log, "-s", "monitoring"]);
+    assert_eq!(
+        json_of(&run)["items"][0]["spec"]["validations"]
+            .as_array()
+            .unwrap()
+            .len(),
+        6
+    );
+    assert!(
+        run.err
+            .contains("privileged containers were observed and stay allowed")
+    );
+    assert!(run.err.contains("hostPID was observed and stays allowed"));
+
+    let run = petrify(&["generate", &log, "-s", "orders", "-s", "monitoring"]);
+    assert_eq!(
+        json_of(&run)["items"][0]["metadata"]["name"],
+        "petrify-workloads"
+    );
+    let run = petrify(&["generate", &log, "-s", "orders", "--policy", "seccomp"]);
+    assert!(run.code == 1 && run.err.contains("which leads to: k8s-admission"));
+}
+
+#[test]
 fn show_syscalls() {
     let run = petrify(&["show", &fixture("strace.log")]);
     assert_eq!(run.code, 0);

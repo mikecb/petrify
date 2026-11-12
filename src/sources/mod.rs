@@ -14,6 +14,7 @@ pub mod azure_flow;
 pub mod cloudtrail;
 pub mod gcp_audit;
 pub mod gcp_flow;
+pub mod k8s_audit;
 pub mod netflow;
 pub mod strace;
 
@@ -31,6 +32,8 @@ pub enum Kind {
     Api(Provider),
     Network,
     Syscall,
+    /// What was deployed to a Kubernetes namespace.
+    Workload,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum)]
@@ -43,13 +46,15 @@ pub enum Format {
     AzureActivity,
     AzureFlow,
     Netflow,
+    K8sAudit,
     Strace,
     Auditd,
 }
 
 impl Format {
     /// Sniffed in this order, most distinctive format first.
-    const ALL: [Format; 9] = [
+    const ALL: [Format; 10] = [
+        Format::K8sAudit,
         Format::Cloudtrail,
         Format::GcpAudit,
         Format::GcpFlow,
@@ -70,6 +75,7 @@ impl Format {
             Format::AzureActivity => "azure-activity",
             Format::AzureFlow => "azure-flow",
             Format::Netflow => "netflow",
+            Format::K8sAudit => "k8s-audit",
             Format::Strace => "strace",
             Format::Auditd => "auditd",
         }
@@ -84,6 +90,7 @@ impl Format {
                 Kind::Network
             }
             Format::Auditd | Format::Strace => Kind::Syscall,
+            Format::K8sAudit => Kind::Workload,
         }
     }
 
@@ -96,6 +103,7 @@ impl Format {
             Format::AzureActivity => azure_activity::sniff(head),
             Format::AzureFlow => azure_flow::sniff(head),
             Format::Netflow => netflow::sniff(head),
+            Format::K8sAudit => k8s_audit::sniff(head),
             Format::Strace => strace::sniff(head),
             Format::Auditd => auditd::sniff(head),
         }
@@ -187,6 +195,7 @@ mod tests {
             ("azure-flow.json", Format::AzureFlow),
             ("azure-nsg-flow.json", Format::AzureFlow),
             ("netflow.csv", Format::Netflow),
+            ("k8s-audit.log", Format::K8sAudit),
             ("strace.log", Format::Strace),
             ("audit.log", Format::Auditd),
         ] {

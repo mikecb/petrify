@@ -81,6 +81,35 @@ pub struct Syscall {
     pub detail: Option<(Detail, String)>,
 }
 
+/// One request to create or change a Kubernetes workload, reduced to what
+/// its pods are allowed to be.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Workload {
+    /// The namespace.
+    pub subject: String,
+    /// `Pod`, `Deployment`, `CronJob`, ...
+    pub kind: String,
+    /// Whether the API server accepted the request.
+    pub admitted: bool,
+    pub pod: PodSpec,
+}
+
+/// The parts of a pod spec that admission policy is written about.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PodSpec {
+    /// Image repositories of every container, without tag or digest.
+    pub images: Vec<String>,
+    pub service_account: String,
+    pub privileged: bool,
+    pub host_network: bool,
+    pub host_pid: bool,
+    pub host_ipc: bool,
+    /// Linux capabilities added to any container.
+    pub capabilities: Vec<String>,
+    /// Paths of `hostPath` volumes.
+    pub host_paths: Vec<String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum)]
 pub enum Arch {
     #[value(name = "x86_64")]
