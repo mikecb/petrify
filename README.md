@@ -36,11 +36,11 @@ Version 0.4. How far each path has been tested:
 - **Kubernetes admission and RBAC**: run end to end against a real API server
   (k3s, Kubernetes 1.34): policies and roles generated from its audit log were
   applied and then tried with requests they should allow and refuse.
-- **AWS** (IAM policy, security group): fixture logs only.
-- **Google Cloud and Azure**: fixture logs only. Their formats were checked
-  against the vendors' documentation, published API definitions and public
-  sample logs, but petrify has not read a log from a real account, and the
-  commands below that apply its output are untested.
+- **AWS, Google Cloud and Azure**: read, but never applied. petrify reads
+  public sample logs for each (among them CloudTrail from a real account and
+  an Activity Log from a real tenant) as well as its own fixtures. No
+  generated policy has been applied to a real account, and the commands below
+  that apply Google Cloud and Azure output are untested.
 
 Read what it generates before applying it. [ROADMAP.md](ROADMAP.md) has what
 comes next.
@@ -171,9 +171,10 @@ and petrify decides, per conversation, in this order:
 If none of these settles it, both directions are allowed and a note says so.
 
 **Whose traffic it is.** Google Cloud and Azure logs say which end is the
-monitored VM or interface. For AWS, the interface's address is inferred as
-the one present in every record. When that fails (a one-conversation log, a
-CSV from a router), pass `--local CIDR`.
+monitored VM or interface, and so do AWS logs that record `flow-direction`.
+Otherwise the interface's address is inferred as the one present in every
+record. When that fails (a one-conversation log, a CSV from a router), pass
+`--local CIDR`.
 
 **Naming the peers.** Peers are listed exactly until a rule has more than
 `--max-peers` (default 8); then prefixes widen step by step. Private addresses
@@ -194,8 +195,20 @@ aws ec2 authorize-security-group-egress --group-id sg-... \
 ```
 
 A new security group allows all egress; revoke that rule or the egress rules
-above constrain nothing. Reads the default flow log format and custom formats
-that start with a header line (as delivered to S3).
+above constrain nothing.
+
+Which field is which is taken from the header line that flow logs delivered
+to S3 start with. Without one, records are read in AWS's own field order,
+which covers the default format and a log configured with all fields. A
+custom selection of fields that has lost its header (as in CloudWatch Logs)
+needs them named, the way the flow log's format string does:
+
+```sh
+petrify generate flows.log -s eni-0abc123 \
+    --fields '${version} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${tcp-flags} ${action}'
+```
+
+Transit gateway flow logs are a different format and are not read.
 
 #### Google Cloud: VPC firewall rules
 
@@ -473,6 +486,10 @@ variant.
 
 `src/syscall_tables.rs` is generated from kernel headers by
 `scripts/gen_syscall_tables.py` (needs `linux-libc-dev` and `cpp`).
+
+`scripts/fetch_samples.sh` downloads public sample logs into `samples/`, for
+trying a change on logs petrify did not write itself. They belong to their
+publishers, so the directory is git-ignored and the tests do not use it.
 
 ## Releasing
 

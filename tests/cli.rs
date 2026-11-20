@@ -814,8 +814,21 @@ fn format_can_be_forced() {
         // "vpcflow" is what 0.1 called the AWS format.
         let run = petrify(&["show", "--format", name, odd.to_str().unwrap()]);
         assert!(run.code == 1 && run.err.contains("no events"));
-        assert!(run.err.contains("unexpected number of fields"));
+        assert!(
+            run.err
+                .contains("name a custom format's fields with --fields")
+        );
     }
+
+    // Naming the fields makes it readable.
+    let fields = "${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol}";
+    let path = odd.to_str().unwrap();
+    let run = petrify(&["show", path, "--fields", fields, "--local", "10.0.0.1"]);
+    assert_eq!(run.code, 0, "{}", run.err);
+    assert!(run.out.starts_with("eni-1  (1 event, aws-flow)"));
+    assert!(run.out.contains("tcp/2     1 peer  10.0.0.2 (1)"));
+    let run = petrify(&["show", path, "--fields", "srcaddr dstaddr"]);
+    assert!(run.code == 1 && run.err.contains("--fields must name at least"));
 }
 
 #[test]

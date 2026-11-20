@@ -92,6 +92,7 @@ fn emit_call(record: &Value, emit: &mut dyn FnMut(ApiCall)) {
     };
     let scope = text(authorization, "scope")
         .or_else(|| text(record, "resourceId"))
+        .or_else(|| text(record, "resourceUri"))
         .unwrap_or("*");
 
     let claims = identity.get("claims").unwrap_or(&Value::Null);
@@ -227,6 +228,15 @@ mod tests {
         let found = parse_text(&bare.to_string());
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].subject, "unknown");
+
+        // Some API versions call the resource "resourceUri".
+        let uri = json!([{
+            "operationName": {"value": "Microsoft.Compute/disks/write"},
+            "resourceUri": "/subscriptions/s1/resourceGroups/web/providers/Microsoft.Compute/disks/d",
+            "caller": "a@contoso.com",
+        }]);
+        let by_uri = parse_text(&uri.to_string());
+        assert!(by_uri[0].resources[0].ends_with("/disks/d"));
         assert_eq!(
             found[0].action,
             "Microsoft.Compute/virtualMachines/restart/action"

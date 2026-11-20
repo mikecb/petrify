@@ -16,7 +16,9 @@ use crate::events::{ApiCall, Notes};
 use crate::sources::{json_documents, text};
 
 pub fn sniff(head: &str) -> bool {
-    head.contains("\"eventSource\"") || head.contains("\"CloudTrailEvent\"")
+    // Azure's Activity Log has an "eventSource" too, but only CloudTrail's
+    // names an AWS service endpoint.
+    AWS_EVENT_SOURCE.is_match(head) || head.contains("\"CloudTrailEvent\"")
 }
 
 /// Accepts every shape CloudTrail events are commonly found in: an S3
@@ -59,6 +61,8 @@ fn unwrap(document: &Value, notes: &mut Notes, emit: &mut dyn FnMut(ApiCall)) {
 
 // -- record -> calls ---------------------------------------------------------
 
+static AWS_EVENT_SOURCE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#""eventSource"\s*:\s*"[^"]*\.amazonaws\.com"#).unwrap());
 static DENIED: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)AccessDenied|Unauthorized|AuthorizationError|Forbidden").unwrap()
 });
@@ -115,7 +119,8 @@ fn calls(record: &Value, emit: &mut dyn FnMut(ApiCall)) {
     } else {
         name.to_string()
     };
-    call(action, resources(record, &service, params, &context));
+    let found = resources(record, &service, &action, params, &context);
+    call(action, found);
 }
 
 /// The durable identity behind a call: the role, not the session.
@@ -338,7 +343,13 @@ fn percent_decode(input: &str) -> String {
 
 // -- everything else ---------------------------------------------------------
 
-fn resources(record: &Value, service: &str, params: &Value, context: &Context) -> Vec<String> {
+fn resources(
+    record: &Value,
+    service: &str,
+    action: &str,
+    params: &Value,
+    context: &Context,
+) -> Vec<String> {
     // `resources[].ARN` entries that belong to a different service than the
     // call are context (a KMS key on an S3 write), not the thing authorised.
     // STS is the exception: it authorises against IAM roles.
@@ -358,7 +369,7 @@ fn resources(record: &Value, service: &str, params: &Value, context: &Context) -
         }
     }
     if found.is_empty() {
-        found = derive(service, params, context);
+        found = derive(service, action, params, context);
     }
     if let (true, Some(index)) = (service == "dynamodb", text(params, "indexName")) {
         // Querying an index is authorised against the index, which
@@ -384,7 +395,7 @@ fn resources(record: &Value, service: &str, params: &Value, context: &Context) -
 
 /// Build ARNs from request parameters, for the services where the mapping
 /// is simple and stable.
-fn derive(service: &str, params: &Value, context: &Context) -> Vec<String> {
+fn derive(service: &str, action: &str, params: &Value, context: &Context) -> Vec<String> {
     let one = |arn: Option<String>| arn.into_iter().collect::<Vec<_>>();
     match service {
         "dynamodb" => one(context.named("dynamodb", "table/", text(params, "tableName"))),
@@ -411,7 +422,9 @@ fn derive(service: &str, params: &Value, context: &Context) -> Vec<String> {
                 context.arn("secretsmanager", &format!("secret:{secret}-??????"))
             }
         })),
-        "ssm" => {
+        // Several kinds of thing are passed as "name"; which one it is
+        // follows from the action.
+        "ssm" if action.contains("Parameter") => {
             let mut names: Vec<String> = Vec::new();
             for name in params
                 .get("names")
@@ -434,6 +447,9 @@ fn derive(service: &str, params: &Value, context: &Context) -> Vec<String> {
                     context.named("ssm", "parameter/", Some(bare))
                 })
                 .collect()
+        }
+        "ssm" if action.contains("Document") && !action.contains("Association") => {
+            one(context.named("ssm", "document/", text(params, "name")))
         }
         "kms" => one(text(params, "keyId").and_then(|key| {
             if key.starts_with("arn:") && key.contains(":key/") {
@@ -658,6 +674,21 @@ mod tests {
                 json!({"path": "/app/"})
             ),
             event(
+                "ssm.amazonaws.com",
+                "CreateDocument",
+                json!({"name": "Patch", "content": "x"})
+            ),
+            event(
+                "ssm.amazonaws.com",
+                "SendCommand",
+                json!({"documentName": "Patch"})
+            ),
+            event(
+                "ssm.amazonaws.com",
+                "StartSession",
+                json!({"target": "i-1"})
+            ),
+            event(
                 "logs.amazonaws.com",
                 "PutLogEvents",
                 json!({"logGroupName": "/app/web"})
@@ -697,6 +728,12 @@ mod tests {
                     "ssm:GetParametersByPath",
                     &[&format!("arn:aws:ssm:{}", arn("parameter/app/*"))]
                 ),
+                expect(
+                    "ssm:CreateDocument",
+                    &[&format!("arn:aws:ssm:{}", arn("document/Patch"))]
+                ),
+                expect("ssm:SendCommand", &["*"]),
+                expect("ssm:StartSession", &["*"]),
                 expect(
                     "logs:PutLogEvents",
                     &[&format!("arn:aws:logs:{}", arn("log-group:/app/web:*"))]
