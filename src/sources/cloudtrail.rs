@@ -13,6 +13,7 @@ use regex::Regex;
 use serde_json::Value;
 
 use crate::events::{ApiCall, Notes};
+use crate::sources::aws_scope::{self, Place};
 use crate::sources::{json_documents, text};
 
 pub fn sniff(head: &str) -> bool {
@@ -90,6 +91,10 @@ fn calls(record: &Value, emit: &mut dyn FnMut(ApiCall)) {
         return;
     };
     if source.starts_with("signin.") {
+        return;
+    }
+    // Asking who you are is always allowed; no policy grants or denies it.
+    if source == "sts.amazonaws.com" && name == "GetCallerIdentity" {
         return;
     }
 
@@ -369,7 +374,17 @@ fn resources(
         }
     }
     if found.is_empty() {
-        found = derive(service, action, params, context);
+        // IAM, EC2 and RDS are scoped from AWS's own reference of what each
+        // action can be limited to; the other services by the rules below.
+        let identity = record.get("userIdentity").unwrap_or(&Value::Null);
+        let caller = text(identity, "arn").filter(|_| text(identity, "type") == Some("IAMUser"));
+        let place = Place {
+            partition: context.partition,
+            region: &context.region,
+            account: &context.account,
+        };
+        found = aws_scope::resources(service, action, params, caller, &place)
+            .unwrap_or_else(|| derive(service, action, params, context));
     }
     if let (true, Some(index)) = (service == "dynamodb", text(params, "indexName")) {
         // Querying an index is authorised against the index, which

@@ -97,6 +97,36 @@ fn generate_iam_policy() {
         Some(json!("arn:aws:iam::444455556666:role/partner-read"))
     );
     assert_eq!(resource_of("ec2:DescribeInstances"), Some(json!("*")));
+    // IAM, EC2 and RDS calls are scoped from AWS's reference: to what the
+    // request named, plus every resource of any other type the action can
+    // involve.
+    assert_eq!(
+        resource_of("iam:GetRole"),
+        Some(json!([
+            "arn:aws:iam::111122223333:role/*/orders-api",
+            "arn:aws:iam::111122223333:role/orders-api",
+        ]))
+    );
+    assert_eq!(
+        resource_of("rds:CreateDBSnapshot"),
+        Some(json!([
+            "arn:aws:rds:us-east-1:111122223333:db:orders",
+            "arn:aws:rds:us-east-1:111122223333:snapshot:orders-nightly",
+        ]))
+    );
+    let start = resource_of("ec2:StartInstances").unwrap();
+    let start: Vec<&str> = start
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    assert!(start.contains(&"arn:aws:ec2:us-east-1:111122223333:instance/i-0a1b2c3d4e5f67890"));
+    assert!(
+        start
+            .iter()
+            .all(|arn| arn.contains("i-0a1b2c3d4e5f67890") || arn.ends_with('*'))
+    );
     assert_eq!(resource_of("cloudwatch:PutMetricData"), Some(json!("*")));
     assert_eq!(resource_of("s3:DeleteObject"), None); // was denied
     assert_eq!(resource_of("s3:ListAllMyBuckets"), None); // another principal
@@ -116,6 +146,32 @@ fn iam_options_change_the_policy() {
     assert!(run.out.contains("\"arn:aws:s3:::orders-data/*\""));
     let run = petrify(&["generate", &log, "-s", "orders-api", "--max-resources", "0"]);
     assert_eq!(run.code, 2);
+}
+
+#[test]
+fn a_principal_that_was_only_refused_gets_no_empty_policy() {
+    let dir = scratch("refused");
+    let log = dir.join("trail.json");
+    let event = json!({"Records": [{
+        "eventSource": "ec2.amazonaws.com",
+        "eventName": "GetPasswordData",
+        "awsRegion": "us-east-1",
+        "errorCode": "Client.UnauthorizedOperation",
+        "userIdentity": {"type": "IAMUser", "arn": "arn:aws:iam::111122223333:user/probe"},
+    }]});
+    std::fs::write(&log, event.to_string()).unwrap();
+    let path = log.to_str().unwrap();
+
+    let run = petrify(&["show", path]);
+    assert!(run.out.contains("API calls: 0 actions") && run.out.contains("ec2:GetPasswordData"));
+    let run = petrify(&["generate", path]);
+    assert_eq!((run.code, run.out.as_str()), (1, ""));
+    assert!(run.err.contains("every call in the log was refused"));
+    let run = petrify(&["generate", path, "--include-denied"]);
+    assert_eq!(
+        json_of(&run)["Statement"][0]["Action"],
+        "ec2:GetPasswordData"
+    );
 }
 
 #[test]

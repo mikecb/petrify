@@ -3,7 +3,7 @@
 Where petrify is, and where it could go next. The order within each section is
 roughly the order of value; nothing here is scheduled.
 
-## Today (0.4)
+## Today (0.5)
 
 | Log                                  | Policy                   | Tested against                         |
 | ------------------------------------ | ------------------------ | -------------------------------------- |
@@ -24,6 +24,13 @@ a real account, which is the first thing to fix.
 Pull requests are checked on Linux and macOS, and a version tag publishes
 binaries for both once the same checks pass.
 
+## Who it is for
+
+petrify is for identities that can be narrowly scoped: a service, and a team
+member looking after their own services in an account or cluster shared with
+other teams. Everything below is ordered by what those two need. An
+administrator's policy is out of scope (see "Not planned").
+
 ## 1. Trust what exists
 
 Before adding more breadth, make the current policies ones you can apply
@@ -31,26 +38,24 @@ without reading them line by line.
 
 - **Apply a generated policy in each cloud.** Reading public sample logs
   found and fixed format bugs, but nobody has yet attached a generated policy
-  to a known application and exercised it. For Google Cloud and Azure this
-  also means running the commands the README gives for applying the output.
-- **Scope more AWS calls.** In a real administrator's CloudTrail, 197 of 240
-  actions came out on `*`, because only ten services have their resources
-  read. IAM, EC2 and RDS name their targets in the request and are the
-  obvious next three.
-- **Summarise names as well as paths.** Twenty secrets called
-  `retrieve-secret-0` to `-19` stay twenty resources, because summarising
-  only understands `/`.
-- **Split a policy that is too large.** The same administrator's policy was
-  13,796 characters against a limit of 6,144; petrify says so and stops.
-- **IAM actions from the source of truth.** Replace the hand-written
-  event-to-action tables with data generated from the AWS Service
-  Authorization Reference, the way the syscall tables are generated from
-  kernel headers. That also tells petrify which actions exist, which support
-  resource-level scoping (so `*` is right, not a gap), and which dependent
-  actions a call needs. Sample logs show the cost of not having it: event
-  names such as `ssm:OpenControlChannel`, `bedrock:Converse` and
-  `s3:GetStorageLensDashboardDataInternal` pass straight through, and are
-  not what IAM calls those permissions.
+  to a known service and exercised it. For Google Cloud and Azure this also
+  means running the commands the README gives for applying the output.
+- **A real service role and a real team member.** The public samples are
+  mostly an administrator and an attack simulation. What is missing is the
+  log of an ordinary service over a few weeks, and of someone deploying and
+  operating it.
+- **Scope more AWS calls.** IAM, EC2 and RDS are scoped from AWS's reference.
+  Next: the same for the other services petrify sees, and for the few
+  actions that take too many resource types to list (`ec2:CreateTags`,
+  `ec2:RunInstances`), where the request does say which ones are involved.
+- **IAM actions from the source of truth.** The AWS Service Authorization
+  Reference is generated into the code for three services, to say which
+  resource types an action supports. Use it for the rest: replace the
+  hand-written event-to-action tables, check that every action petrify
+  writes exists, and add the dependent actions a call needs. Sample logs show
+  the cost of not having it: event names such as `ssm:OpenControlChannel`,
+  `bedrock:Converse` and `s3:GetStorageLensDashboardDataInternal` pass
+  straight through, and are not what IAM calls those permissions.
 - **Flag what a log cannot show.** When the behaviour implies a permission
   CloudTrail never records (`iam:PassRole` for `RunInstances` or
   `CreateFunction`, `kms:Decrypt` behind an encrypted bucket), say so.
@@ -67,6 +72,31 @@ without reading them line by line.
   when auditd is running, and test against crun and containerd.
 - **Large logs.** CloudTrail files are read whole; stream them. Measure memory
   on a day of flow logs from a busy interface.
+
+## 1a. Shared accounts
+
+What a team member's policy needs that a single service's does not: a way to
+say "what is ours" that survives the next resource they create.
+
+- **Summarise by name prefix.** A team's resources usually share one
+  (`orders-api`, `orders-worker`, `orders-db`). Today twenty secrets with a
+  common prefix stay twenty resources, because summarising only understands
+  `/`. Summarise to `orders-*`, only at a separator, and say what the prefix
+  is so that one reaching into another team's names is seen.
+- **Summarise by tag.** Where a team marks its resources with a tag, a
+  condition on `aws:ResourceTag` scopes better than any list of names.
+  CloudTrail shows tags only where a request sets them, so this needs the
+  tags from somewhere else, or from the user.
+- **Roles a team creates for its services.** Creating and passing roles is
+  where a narrow policy becomes a broad one. petrify names the
+  permission-changing actions it grants; next is to write the grant so that
+  it only works with a permissions boundary, or under the team's IAM path.
+- **Leave out what the console does on its own.** A person's log is full of
+  calls their browser made while they looked at a page (service health,
+  notification hubs, storage dashboards). They are not the work, and many
+  are not real IAM actions.
+- **The same for Kubernetes and the other clouds.** A namespace is already a
+  tenant boundary; projects, resource groups and folders are the others.
 
 ## 2. Compare, not just generate
 
@@ -167,6 +197,9 @@ Nothing has been tested there yet.
 
 ## Not planned
 
+- **Administrator policies.** Someone who works across a whole account has
+  no narrow policy to find. petrify notes when a principal is that broad and
+  does not try to make the result fit, by splitting it or otherwise.
 - **Enforcement or a long-running agent.** petrify reads logs and writes
   files. Applying the policy, and collecting the logs, belong to tools that
   already do those well.
