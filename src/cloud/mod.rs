@@ -20,6 +20,9 @@ pub const SUBJECT: &str = "principal";
 
 /// Permission -> how often each resource was touched.
 type Uses = BTreeMap<String, BTreeMap<String, u64>>;
+/// (permission, whether it was refused) -> number of calls. Kept apart from
+/// the resources because one call can touch several.
+type Calls = BTreeMap<(String, bool), u64>;
 
 #[derive(Debug)]
 pub struct Behavior {
@@ -28,6 +31,7 @@ pub struct Behavior {
     pub subjects: Vec<String>,
     pub allowed: Uses,
     pub denied: Uses,
+    calls: Calls,
 }
 
 impl Behavior {
@@ -64,8 +68,8 @@ impl Provider {
 #[derive(Debug)]
 pub struct Collector {
     provider: Provider,
-    /// subject -> (allowed, denied)
-    seen: BTreeMap<String, (Uses, Uses)>,
+    /// subject -> (allowed, denied, calls)
+    seen: BTreeMap<String, (Uses, Uses, Calls)>,
     events: BTreeMap<String, u64>,
 }
 
@@ -84,7 +88,10 @@ impl Collector {
 
     pub fn add(&mut self, event: ApiCall) {
         *self.events.entry(event.subject.clone()).or_default() += 1;
-        let (allowed, denied) = self.seen.entry(event.subject).or_default();
+        let (allowed, denied, calls) = self.seen.entry(event.subject).or_default();
+        *calls
+            .entry((event.action.clone(), event.denied))
+            .or_default() += 1;
         let uses = if event.denied { denied } else { allowed };
         let resources = uses.entry(event.action).or_default();
         for resource in event.resources {
@@ -104,8 +111,13 @@ impl Collector {
             subjects: subjects.to_vec(),
             allowed: Uses::new(),
             denied: Uses::new(),
+            calls: Calls::new(),
         };
-        for (allowed, denied) in subjects.iter().filter_map(|subject| self.seen.get(subject)) {
+        let chosen = subjects.iter().filter_map(|subject| self.seen.get(subject));
+        for (allowed, denied, calls) in chosen {
+            for (key, count) in calls {
+                *merged.calls.entry(key.clone()).or_default() += count;
+            }
             for (from, into) in [(allowed, &mut merged.allowed), (denied, &mut merged.denied)] {
                 for (action, resources) in from {
                     let target = into.entry(action.clone()).or_default();
@@ -130,20 +142,21 @@ pub fn describe(behavior: &Behavior) -> String {
         plural(behavior.allowed.len() as u64, "action"),
         plural(services.len() as u64, "service"),
     )];
-    lines.extend(table(&behavior.allowed));
+    lines.extend(table(&behavior.allowed, &behavior.calls, false));
     if !behavior.denied.is_empty() {
         lines.push(String::new());
         lines.push("Denied (left out of the policy unless --include-denied):".to_string());
-        lines.extend(table(&behavior.denied));
+        lines.extend(table(&behavior.denied, &behavior.calls, true));
     }
     lines.join("\n")
 }
 
-fn table(uses: &Uses) -> Vec<String> {
+fn table(uses: &Uses, calls: &Calls, denied: bool) -> Vec<String> {
     let width = uses.keys().map(String::len).max().unwrap_or(0);
     uses.iter()
         .map(|(action, resources)| {
-            let calls = commas(resources.values().sum());
+            let count = calls.get(&(action.clone(), denied)).copied().unwrap_or(0);
+            let calls = commas(count);
             format!("  {action:<width$}  {calls:>7}  {}", top(resources, 3))
         })
         .collect()
@@ -235,6 +248,20 @@ mod tests {
             ],
         );
         assert!(describe(&azure).starts_with("API calls: 2 actions across 1 service\n"));
+    }
+
+    #[test]
+    fn calls_are_counted_once_however_many_resources_they_touch() {
+        let attach = ApiCall {
+            resources: vec!["volume/v".to_string(), "instance/i".to_string()],
+            ..call("ec2:AttachVolume", "", false)
+        };
+        let seen = behavior(Provider::Aws, [attach.clone(), attach]);
+        let text = describe(&seen);
+        assert!(
+            text.contains("ec2:AttachVolume        2  instance/i (2), volume/v (2)"),
+            "{text}"
+        );
     }
 
     #[test]

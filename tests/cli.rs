@@ -97,6 +97,36 @@ fn generate_iam_policy() {
         Some(json!("arn:aws:iam::444455556666:role/partner-read"))
     );
     assert_eq!(resource_of("ec2:DescribeInstances"), Some(json!("*")));
+    // IAM, EC2 and RDS calls are scoped from AWS's reference: to what the
+    // request named, plus every resource of any other type the action can
+    // involve.
+    assert_eq!(
+        resource_of("iam:GetRole"),
+        Some(json!([
+            "arn:aws:iam::111122223333:role/*/orders-api",
+            "arn:aws:iam::111122223333:role/orders-api",
+        ]))
+    );
+    assert_eq!(
+        resource_of("rds:CreateDBSnapshot"),
+        Some(json!([
+            "arn:aws:rds:us-east-1:111122223333:db:orders",
+            "arn:aws:rds:us-east-1:111122223333:snapshot:orders-nightly",
+        ]))
+    );
+    let start = resource_of("ec2:StartInstances").unwrap();
+    let start: Vec<&str> = start
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    assert!(start.contains(&"arn:aws:ec2:us-east-1:111122223333:instance/i-0a1b2c3d4e5f67890"));
+    assert!(
+        start
+            .iter()
+            .all(|arn| arn.contains("i-0a1b2c3d4e5f67890") || arn.ends_with('*'))
+    );
     assert_eq!(resource_of("cloudwatch:PutMetricData"), Some(json!("*")));
     assert_eq!(resource_of("s3:DeleteObject"), None); // was denied
     assert_eq!(resource_of("s3:ListAllMyBuckets"), None); // another principal

@@ -3,7 +3,7 @@
 Where petrify is, and where it could go next. The order within each section is
 roughly the order of value; nothing here is scheduled.
 
-## Today (0.4)
+## Today (0.5)
 
 | Log                                  | Policy                   | Tested against                         |
 | ------------------------------------ | ------------------------ | -------------------------------------- |
@@ -33,21 +33,23 @@ without reading them line by line.
   found and fixed format bugs, but nobody has yet attached a generated policy
   to a known application and exercised it. For Google Cloud and Azure this
   also means running the commands the README gives for applying the output.
-- **Scope more AWS calls.** In a real administrator's CloudTrail, 197 of 240
-  actions came out on `*`, because only ten services have their resources
-  read. IAM, EC2 and RDS name their targets in the request and are the
-  obvious next three.
+- **Scope more AWS calls.** IAM, EC2 and RDS are now scoped from AWS's
+  reference, which took a real administrator's CloudTrail from 197 of 240
+  actions on `*` to 117, most of the rest being calls that cannot be limited.
+  Next: the same for the other services petrify sees, and for the few
+  actions that take too many resource types to list (`ec2:CreateTags`,
+  `ec2:RunInstances`), where the request does say which ones are involved.
 - **Summarise names as well as paths.** Twenty secrets called
   `retrieve-secret-0` to `-19` stay twenty resources, because summarising
   only understands `/`.
-- **Split a policy that is too large.** The same administrator's policy was
-  13,796 characters against a limit of 6,144; petrify says so and stops.
-- **IAM actions from the source of truth.** Replace the hand-written
-  event-to-action tables with data generated from the AWS Service
-  Authorization Reference, the way the syscall tables are generated from
-  kernel headers. That also tells petrify which actions exist, which support
-  resource-level scoping (so `*` is right, not a gap), and which dependent
-  actions a call needs. Sample logs show the cost of not having it: event
+- **Split a policy that is too large.** The same administrator's policy is
+  29,651 characters against a limit of 6,144, more than before because
+  scoped resources take more room than `*`. petrify says so and stops.
+- **IAM actions from the source of truth.** The AWS Service Authorization
+  Reference is now generated into the code for three services, to say which
+  resource types an action supports. Use it for the rest: replace the
+  hand-written event-to-action tables, check that every action petrify
+  writes exists, and add the dependent actions a call needs. Sample logs show the cost of not having it: event
   names such as `ssm:OpenControlChannel`, `bedrock:Converse` and
   `s3:GetStorageLensDashboardDataInternal` pass straight through, and are
   not what IAM calls those permissions.

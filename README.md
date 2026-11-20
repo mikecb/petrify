@@ -30,7 +30,7 @@ petrify: wrote IAM policy to policy.json for arn:aws:iam::111122223333:role/orde
 
 ## Status
 
-Version 0.4. How far each path has been tested:
+Version 0.5. How far each path has been tested:
 
 - **Seccomp**: run end to end against a real container runtime.
 - **Kubernetes admission and RBAC**: run end to end against a real API server
@@ -98,6 +98,15 @@ aws accessanalyzer validate-policy --policy-type IDENTITY_POLICY \
 - Resources come from the event when it names them, and from request
   parameters for S3, DynamoDB, SQS, SNS, Lambda, Secrets Manager, SSM, KMS,
   CloudWatch Logs and STS. Everything else is granted on `*` and noted.
+- IAM, EC2 and RDS calls are scoped using AWS's own reference of which
+  resource types each action can be limited to. A call is granted on the
+  resources its request named, plus every resource of any other type the
+  action can involve: creating a subnet in `vpc-123` is allowed on that VPC
+  and on `subnet/*`, since the subnet had no ID yet. That never grants less
+  than the call needed. Actions that cannot be limited at all (most
+  `Describe` and `List` calls) stay on `*`, correctly.
+- IAM names are allowed under any path (`role/app` and `role/*/app`), because
+  CloudTrail records the name without it.
 - An action that touched more than `--max-resources` resources (default 10)
   has its deepest path segments replaced by wildcards until it fits:
   a thousand keys under `uploads/2026/` become `uploads/2026/*`.
@@ -486,6 +495,9 @@ variant.
 
 `src/syscall_tables.rs` is generated from kernel headers by
 `scripts/gen_syscall_tables.py` (needs `linux-libc-dev` and `cpp`).
+
+`src/sources/aws_reference.rs` is generated from AWS's Service Authorization
+Reference by `scripts/gen_aws_reference.py` (needs network access).
 
 `scripts/fetch_samples.sh` downloads public sample logs into `samples/`, for
 trying a change on logs petrify did not write itself. They belong to their
