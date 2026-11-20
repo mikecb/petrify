@@ -1,14 +1,15 @@
-//! Cloud API behaviour, and the role or policy that grants exactly it.
+//! API behaviour, and the role or policy that grants exactly it.
 //!
-//! What an identity did is modelled the same way for every cloud: which
+//! What an identity did is modelled the same way for every platform: which
 //! permissions it exercised, on what, and whether it was refused. [`aws`],
-//! [`gcp`] and [`azure`] each turn that into their own kind of document.
-//! Permission names are not translated between clouds, so a log from one
-//! cloud only ever leads to that cloud's policy.
+//! [`gcp`], [`azure`] and [`kubernetes`] each turn that into their own kind
+//! of document. Permission names are not translated between platforms, so a
+//! log from one only ever leads to that one's policy.
 
 pub mod aws;
 pub mod azure;
 pub mod gcp;
+pub mod kubernetes;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -48,12 +49,13 @@ impl Behavior {
 impl Provider {
     /// The service a permission belongs to: `s3` in `s3:GetObject`, `storage`
     /// in `storage.objects.get`, `Microsoft.Storage` in
-    /// `Microsoft.Storage/storageAccounts/write`.
+    /// `Microsoft.Storage/storageAccounts/write`, and the API group `apps`
+    /// in `apps/deployments:patch`.
     fn service_of(self, action: &str) -> &str {
         let separator = match self {
             Provider::Aws => ':',
             Provider::Gcp => '.',
-            Provider::Azure => '/',
+            Provider::Azure | Provider::Kubernetes => '/',
         };
         action.split(separator).next().unwrap_or(action)
     }

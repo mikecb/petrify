@@ -27,12 +27,13 @@ impl From<std::io::Error> for Error {
     }
 }
 
-/// The cloud whose permission vocabulary an API call is written in.
+/// The platform whose permission vocabulary an API call is written in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Provider {
     Aws,
     Gcp,
     Azure,
+    Kubernetes,
 }
 
 /// One cloud API call, already translated to the provider's permission
@@ -42,7 +43,9 @@ pub struct ApiCall {
     pub subject: String,
     /// The permission exercised, as the provider's policies name it:
     /// `s3:GetObject`, `storage.objects.get`,
-    /// `Microsoft.Storage/storageAccounts/write`.
+    /// `Microsoft.Storage/storageAccounts/write`. Kubernetes has no single
+    /// name for one, so it is written `group/resource:verb`, as in
+    /// `apps/deployments:patch` or `core/pods/log:get`.
     pub action: String,
     /// What the call touched (ARNs, resource names, scopes), or `["*"]`
     /// when the log does not say.

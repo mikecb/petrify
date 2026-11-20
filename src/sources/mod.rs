@@ -94,6 +94,13 @@ impl Format {
         }
     }
 
+    /// Whether this format can also be read as `kind` of behaviour. A
+    /// Kubernetes audit log says what was deployed and, read differently,
+    /// who called which API.
+    pub fn offers(self, kind: Kind) -> bool {
+        kind == self.kind() || (self == Format::K8sAudit && kind == Kind::Api(Provider::Kubernetes))
+    }
+
     fn sniff(self, head: &str) -> bool {
         match self {
             Format::Cloudtrail => cloudtrail::sniff(head),

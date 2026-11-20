@@ -1,6 +1,11 @@
-//! Kubernetes API server audit log -> [`Workload`].
+//! Kubernetes API server audit log -> [`Workload`] or [`ApiCall`].
 //!
-//! Reads the requests that create or change pods and the controllers that
+//! One log answers two questions. What was deployed ([`parse`]) leads to an
+//! admission policy; who called which API ([`parse_requests`]) leads to RBAC
+//! roles. The second needs nothing but the `Metadata` level. The rest of
+//! this page is about the first.
+//!
+//! [`parse`] reads the requests that create or change pods and the controllers that
 //! make pods (Deployments, StatefulSets, DaemonSets, Jobs, CronJobs and so
 //! on), and keeps the parts of their pod specs that admission policy cares
 //! about.
@@ -15,11 +20,12 @@
 //!   `Request`-level event shows the pod as it was sent, without, say, the
 //!   sidecar a service mesh injects.
 
+use std::collections::HashSet;
 use std::io::{self, BufRead};
 
 use serde_json::Value;
 
-use crate::events::{Notes, PodSpec, Workload};
+use crate::events::{ApiCall, Notes, PodSpec, Workload};
 use crate::sources::{json_documents, text};
 
 pub fn sniff(head: &str) -> bool {
@@ -32,19 +38,92 @@ pub fn parse(
     emit: &mut dyn FnMut(Workload),
 ) -> io::Result<()> {
     for document in &json_documents(reader, notes)? {
-        events(document, notes, emit);
+        events(document, &mut |found| event(found, notes, emit));
     }
     Ok(())
 }
 
-fn events(document: &Value, notes: &mut Notes, emit: &mut dyn FnMut(Workload)) {
-    if let Some(items) = document.as_array() {
-        items.iter().for_each(|item| events(item, notes, emit));
-    } else if let Some(items) = document.get("items") {
-        events(items, notes, emit); // an EventList
-    } else if document.get("auditID").is_some() {
-        event(document, notes, emit);
+/// Every request in the log as the RBAC permission it exercised.
+pub fn parse_requests(
+    reader: &mut dyn BufRead,
+    notes: &mut Notes,
+    emit: &mut dyn FnMut(ApiCall),
+) -> io::Result<()> {
+    // A watch is logged when it starts and again when it ends, possibly
+    // hours later and outside the log; count it once, at whichever is seen.
+    let mut started: HashSet<String> = HashSet::new();
+    for document in &json_documents(reader, notes)? {
+        events(document, &mut |found| request(found, &mut started, emit));
     }
+    Ok(())
+}
+
+fn events(document: &Value, each: &mut dyn FnMut(&Value)) {
+    if let Some(items) = document.as_array() {
+        items.iter().for_each(|item| events(item, each));
+    } else if let Some(items) = document.get("items") {
+        events(items, each); // an EventList
+    } else if document.get("auditID").is_some() {
+        each(document);
+    }
+}
+
+fn request(event: &Value, started: &mut HashSet<String>, emit: &mut dyn FnMut(ApiCall)) {
+    let id = text(event, "auditID").unwrap_or("");
+    match text(event, "stage") {
+        Some("ResponseStarted") => {
+            started.insert(id.to_string());
+        }
+        Some("ResponseComplete") | None if !started.contains(id) => {}
+        _ => return,
+    }
+    // Authorisation is decided for the impersonated user, when there is one.
+    let user = event
+        .get("impersonatedUser")
+        .or_else(|| event.get("user"))
+        .and_then(|user| text(user, "username"));
+    let (Some(user), Some(verb)) = (user, text(event, "verb")) else {
+        return;
+    };
+
+    let annotations = event.get("annotations").unwrap_or(&Value::Null);
+    let denied = match text(annotations, "authorization.k8s.io/decision") {
+        Some(decision) => decision == "forbid",
+        None => {
+            let status = event.get("responseStatus").unwrap_or(&Value::Null);
+            status.get("code").and_then(Value::as_u64) == Some(403)
+        }
+    };
+
+    let target = event.get("objectRef").unwrap_or(&Value::Null);
+    let (action, resource) = match text(target, "resource") {
+        Some(resource) => {
+            let group = text(target, "apiGroup").unwrap_or("core");
+            let sub = text(target, "subresource").map(|sub| format!("/{sub}"));
+            (
+                format!("{group}/{resource}{}:{verb}", sub.unwrap_or_default()),
+                format!(
+                    "{}/{}",
+                    text(target, "namespace").unwrap_or("*"),
+                    text(target, "name").unwrap_or("*")
+                ),
+            )
+        }
+        // Paths outside the resource model: /healthz, /version, /metrics.
+        None => {
+            let Some(uri) = text(event, "requestURI") else {
+                return;
+            };
+            let path = uri.split('?').next().unwrap_or(uri);
+            (format!("nonresource/url:{verb}"), path.to_string())
+        }
+    };
+    emit(ApiCall {
+        subject: user.to_string(),
+        action,
+        resources: vec![resource],
+        denied,
+    });
 }
 
 /// Where the pod spec sits in each kind of workload, by resource name.
@@ -348,5 +427,128 @@ mod tests {
             ("Deployment", &PodSpec::default())
         );
         assert_eq!(notes.len(), 1); // the Metadata-level create
+    }
+
+    fn requests(log: &Value) -> Vec<ApiCall> {
+        let (mut found, mut notes) = (Vec::new(), Notes::default());
+        let text = log.to_string();
+        parse_requests(&mut text.as_bytes(), &mut notes, &mut |call| {
+            found.push(call)
+        })
+        .unwrap();
+        found
+    }
+
+    fn request(id: &str, verb: &str, target: Value) -> Value {
+        json!({
+            "kind": "Event",
+            "apiVersion": "audit.k8s.io/v1",
+            "level": "Metadata",
+            "auditID": id,
+            "stage": "ResponseComplete",
+            "requestURI": "/healthz?verbose=1",
+            "verb": verb,
+            "user": {"username": "system:serviceaccount:orders:orders-api"},
+            "objectRef": target,
+            "responseStatus": {"code": 200},
+            "annotations": {"authorization.k8s.io/decision": "allow"},
+        })
+    }
+
+    #[test]
+    fn requests_are_read_as_rbac_permissions() {
+        let mut url = request("5", "get", Value::Null);
+        url.as_object_mut().unwrap().remove("objectRef");
+        let log = json!([
+            request(
+                "1",
+                "get",
+                json!({"resource": "secrets", "namespace": "orders", "name": "db"})
+            ),
+            request(
+                "2",
+                "list",
+                json!({"resource": "deployments", "apiGroup": "apps", "namespace": "orders"})
+            ),
+            request(
+                "3",
+                "get",
+                json!({"resource": "pods", "subresource": "log", "namespace": "orders", "name": "p"})
+            ),
+            request("4", "list", json!({"resource": "nodes"})),
+            url,
+        ]);
+        let found = requests(&log);
+        let seen: Vec<(&str, &str)> = found
+            .iter()
+            .map(|call| (call.action.as_str(), call.resources[0].as_str()))
+            .collect();
+        assert_eq!(
+            seen,
+            [
+                ("core/secrets:get", "orders/db"),
+                ("apps/deployments:list", "orders/*"),
+                ("core/pods/log:get", "orders/p"),
+                ("core/nodes:list", "*/*"),
+                ("nonresource/url:get", "/healthz"),
+            ]
+        );
+        assert!(found.iter().all(|call| !call.denied));
+        assert!(
+            found
+                .iter()
+                .all(|call| call.subject.ends_with(":orders-api"))
+        );
+    }
+
+    #[test]
+    fn refusals_impersonation_and_long_requests() {
+        let pods = || json!({"resource": "pods", "namespace": "orders"});
+        let mut forbidden = request("1", "list", pods());
+        forbidden["annotations"] = json!({"authorization.k8s.io/decision": "forbid"});
+        let mut by_status = request("2", "list", pods());
+        by_status["annotations"] = Value::Null;
+        by_status["responseStatus"] = json!({"code": 403});
+        let mut not_found = request("3", "get", pods());
+        not_found["responseStatus"] = json!({"code": 404});
+        let mut impersonated = request("4", "list", pods());
+        impersonated["user"] = json!({"username": "system:admin"});
+        impersonated["impersonatedUser"] = json!({"username": "alice"});
+        // A watch: logged when it starts, and again when it ends.
+        let mut started = request("5", "watch", pods());
+        started["stage"] = json!("ResponseStarted");
+        let ended = request("5", "watch", pods());
+        let mut received = request("6", "list", pods());
+        received["stage"] = json!("RequestReceived");
+
+        let found = requests(&json!([
+            forbidden,
+            by_status,
+            not_found,
+            impersonated,
+            started,
+            ended,
+            received
+        ]));
+        let seen: Vec<(&str, &str, bool)> = found
+            .iter()
+            .map(|call| {
+                (
+                    call.subject.rsplit(':').next().unwrap(),
+                    call.action.as_str(),
+                    call.denied,
+                )
+            })
+            .collect();
+        assert_eq!(
+            seen,
+            [
+                ("orders-api", "core/pods:list", true),
+                ("orders-api", "core/pods:list", true),
+                ("orders-api", "core/pods:get", false),
+                ("alice", "core/pods:list", false),
+                ("orders-api", "core/pods:watch", false),
+            ]
+        );
     }
 }
