@@ -3,7 +3,7 @@
 Where petrify is, and where it could go next. The order within each section is
 roughly the order of value; nothing here is scheduled.
 
-## Today (0.3)
+## Today (0.4)
 
 | Log                                  | Policy                   | Tested against                         |
 | ------------------------------------ | ------------------------ | -------------------------------------- |
@@ -14,6 +14,7 @@ roughly the order of value; nothing here is scheduled.
 | Google Cloud VPC Flow Logs           | VPC firewall rules       | hand-written fixtures only             |
 | Azure VNet and NSG flow logs         | NSG security rules       | hand-written fixtures only             |
 | Kubernetes API server audit log      | ValidatingAdmissionPolicy | a real API server (k3s, Kubernetes 1.34) |
+| Kubernetes API server audit log      | RBAC roles and bindings  | a real API server (k3s, Kubernetes 1.34) |
 | `strace`, audit / kernel-log records | seccomp profile          | a real container under Docker and runc |
 
 The seccomp and Kubernetes paths have run end to end. None of the cloud paths
@@ -79,8 +80,6 @@ Each of these is a second `policy` function over an existing behaviour model.
   is how most of them are applied, and it would replace the shell loops the
   README needs for Google Cloud and Azure today.
 - **Kubernetes NetworkPolicy** and **nftables** rules from flows.
-- **Kubernetes RBAC Roles** from the audit log petrify already reads: who
-  used which verbs on which resources. That is the IAM policy of a cluster.
 - **Kyverno and Gatekeeper** output for the admission behaviour, for clusters
   that already standardise on one of them.
 - **systemd hardening** from a trace: `SystemCallFilter=`, `IPAddressAllow=`,
@@ -108,6 +107,9 @@ Each of these is a second `policy` function over an existing behaviour model.
   group IDs, seccomp and AppArmor profiles.
 - **Image digests**: allow only the digests observed, for namespaces that
   deploy by digest.
+
+- **RBAC for groups and aggregated roles.** Bind a group when every member
+  behaves alike, and say when an existing ClusterRole already fits.
 
 ## 5. macOS: Santa rules
 

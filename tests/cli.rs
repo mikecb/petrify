@@ -554,7 +554,129 @@ fn admission_policy_options() {
         "petrify-workloads"
     );
     let run = petrify(&["generate", &log, "-s", "orders", "--policy", "seccomp"]);
-    assert!(run.code == 1 && run.err.contains("which leads to: k8s-admission"));
+    assert!(run.code == 1 && run.err.contains("which leads to: k8s-admission, k8s-rbac"));
+}
+
+#[test]
+fn kubernetes_audit_log_becomes_rbac_roles() {
+    // The fixture is a trimmed audit log from a real API server.
+    let log = fixture("k8s-audit-rbac.log");
+    let sa = "system:serviceaccount:orders:orders-api";
+
+    // Without --policy the log is read for what was deployed.
+    let run = petrify(&["show", &log]);
+    assert!(
+        run.out
+            .starts_with("orders  (4 events, k8s-audit)\n\nWorkloads: 4 admitted")
+    );
+
+    let run = petrify(&["show", &log, "--policy", "k8s-rbac"]);
+    assert!(run.out.starts_with("The log covers 4 principals."));
+    let run = petrify(&["show", &log, "-p", "k8s-rbac", "-s", "orders:orders-api"]);
+    assert!(run.out.starts_with(&format!(
+        "{sa}  (22 events, k8s-audit)\n\nAPI calls: 14 actions across 5 services\n"
+    )));
+    assert!(run.out.contains("core/secrets:get"));
+    assert!(run.out.contains("orders/db-password (1)"));
+    let denied = run.out.split("Denied").nth(1).expect("a Denied section");
+    assert!(denied.contains("core/nodes:list") && denied.contains("core/secrets:list"));
+
+    let run = petrify(&[
+        "generate",
+        &log,
+        "-p",
+        "k8s-rbac",
+        "-s",
+        "orders:orders-api",
+    ]);
+    let list = json_of(&run);
+    let kinds: Vec<&str> = list["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        kinds,
+        ["ClusterRole", "ClusterRoleBinding", "Role", "RoleBinding"]
+    );
+    assert_eq!(
+        list["items"][2]["rules"],
+        json!([
+            {"apiGroups": [""], "resources": ["configmaps"], "resourceNames": ["app-config"], "verbs": ["get"]},
+            {"apiGroups": [""], "resources": ["namespaces"], "resourceNames": ["orders"], "verbs": ["get"]},
+            {"apiGroups": [""], "resources": ["secrets"], "resourceNames": ["db-password"], "verbs": ["get"]},
+            {"apiGroups": ["apps"], "resources": ["deployments"], "resourceNames": ["orders-api"], "verbs": ["get", "patch"]},
+            {"apiGroups": ["coordination.k8s.io"], "resources": ["leases"], "resourceNames": ["orders-api-leader"], "verbs": ["get", "patch"]},
+            {"apiGroups": [""], "resources": ["pods"], "verbs": ["delete", "list", "watch"]},
+            {"apiGroups": [""], "resources": ["pods/log"], "verbs": ["get"]},
+            {"apiGroups": [""], "resources": ["services"], "verbs": ["list"]},
+        ])
+    );
+    assert_eq!(
+        list["items"][3]["subjects"],
+        json!([{"kind": "ServiceAccount", "name": "orders-api", "namespace": "orders"}])
+    );
+    assert_eq!(
+        list["items"][0]["rules"][1],
+        json!({"nonResourceURLs": ["/healthz", "/version"], "verbs": ["get"]})
+    );
+    assert!(
+        run.err
+            .contains(&format!("wrote RBAC roles for {sa} from 22 events"))
+    );
+    assert!(!run.err.contains("note:"));
+
+    // Refused requests are granted only on request; listing secrets is
+    // called out when they are.
+    let run = petrify(&[
+        "generate",
+        &log,
+        "-p",
+        "k8s-rbac",
+        "-s",
+        "orders:orders-api",
+        "--include-denied",
+    ]);
+    assert!(run.out.contains("\"nodes\""));
+    assert!(run.err.contains("can read every secret in kube-system"));
+
+    // A ReplicaSet's name is made up by its Deployment, so it is not
+    // pinned; the Deployment's own name is.
+    let run = petrify(&[
+        "generate",
+        &log,
+        "-p",
+        "k8s-rbac",
+        "-s",
+        "replicaset-controller",
+    ]);
+    assert_eq!(
+        json_of(&run)["items"][0]["rules"][1],
+        json!({"apiGroups": ["apps"], "resources": ["replicasets/status"], "verbs": ["update"]})
+    );
+    let run = petrify(&[
+        "generate",
+        &log,
+        "-p",
+        "k8s-rbac",
+        "-s",
+        "deployment-controller",
+    ]);
+    assert_eq!(
+        json_of(&run)["items"][0]["rules"][0],
+        json!({
+            "apiGroups": ["apps"],
+            "resources": ["deployments/status"],
+            "resourceNames": ["orders-api"],
+            "verbs": ["update"],
+        })
+    );
+
+    let run = petrify(&["generate", &log, "-s", "orders", "--policy", "seccomp"]);
+    assert!(run.err.contains("which leads to: k8s-admission, k8s-rbac"));
+    let run = petrify(&["show", &fixture("cloudtrail.json"), "-p", "k8s-rbac"]);
+    assert!(run.code == 1 && run.err.contains("which leads to: aws-iam"));
 }
 
 #[test]

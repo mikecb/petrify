@@ -61,6 +61,12 @@ struct Common {
     /// inferred (repeatable)
     #[arg(long, value_name = "CIDR")]
     local: Vec<String>,
+
+    /// Policy to write, or whose view of the log to show, when it should not
+    /// follow from the log: a flow log can become another cloud's firewall
+    /// rules, and a Kubernetes audit log can become RBAC roles
+    #[arg(short, long, value_enum)]
+    policy: Option<Policy>,
 }
 
 #[derive(Args)]
@@ -72,17 +78,12 @@ struct Generate {
     #[arg(short, long, value_name = "FILE")]
     output: Option<PathBuf>,
 
-    /// Policy to write, when it should not follow from the log: flow logs
-    /// from one cloud can become another cloud's firewall rules
-    #[arg(short, long, value_enum)]
-    policy: Option<Policy>,
-
     /// Also grant calls that were denied while the log was recorded
     #[arg(long, help_heading = "IAM policies and roles (audit logs)")]
     include_denied: bool,
 
-    /// Summarise resources by path prefix (AWS) or resource groups by
-    /// subscription (Azure) beyond N
+    /// Summarise beyond N: resources by path prefix (AWS), resource groups
+    /// by subscription (Azure), named objects by their kind (Kubernetes)
     #[arg(long, value_name = "N", default_value_t = 10, value_parser = at_least_one,
           help_heading = "IAM policies and roles (audit logs)")]
     max_resources: usize,
@@ -141,6 +142,7 @@ enum Policy {
     GcpFirewall,
     AzureNsg,
     K8sAdmission,
+    K8sRbac,
     Seccomp,
 }
 
@@ -168,6 +170,7 @@ impl Policy {
             Policy::AzureRole => Kind::Api(Provider::Azure),
             Policy::AwsSecurityGroup | Policy::GcpFirewall | Policy::AzureNsg => Kind::Network,
             Policy::K8sAdmission => Kind::Workload,
+            Policy::K8sRbac => Kind::Api(Provider::Kubernetes),
             Policy::Seccomp => Kind::Syscall,
         }
     }
@@ -182,6 +185,7 @@ impl Policy {
             Policy::GcpFirewall => network::gcp::POLICY_NAME,
             Policy::AzureNsg => network::azure::POLICY_NAME,
             Policy::K8sAdmission => workloads::admission::POLICY_NAME,
+            Policy::K8sRbac => cloud::kubernetes::POLICY_NAME,
             Policy::Seccomp => syscalls::POLICY_NAME,
         }
     }
@@ -230,6 +234,21 @@ fn run(command: &Command, notes: &mut Notes) -> Result<()> {
         Command::Generate(generate) => &generate.common,
     };
     let (collector, first, formats) = collect(common, notes)?;
+    if let Some(policy) = common
+        .policy
+        .filter(|policy| policy.kind() != collector.kind())
+    {
+        let fitting: Vec<String> = Policy::value_variants()
+            .iter()
+            .filter(|candidate| formats.iter().any(|format| format.offers(candidate.kind())))
+            .map(|candidate| candidate.name())
+            .collect();
+        return Err(Error(format!(
+            "--policy {} cannot be written from this log, which leads to: {}",
+            policy.name(),
+            fitting.join(", ")
+        )));
+    }
     let subjects = collector.subjects();
     if subjects.is_empty() {
         return Err(Error(
@@ -273,7 +292,7 @@ fn run(command: &Command, notes: &mut Notes) -> Result<()> {
             ))
         }
         Command::Generate(options) => {
-            let policy = options.policy.unwrap_or(Policy::default_for(first));
+            let policy = common.policy.unwrap_or(Policy::default_for(first));
             let (document, warnings) = collector.policy(policy, &chosen, options)?;
             warnings.iter().for_each(|warning| notes.add(warning));
             let text = serde_json::to_string_pretty(&document).expect("JSON value") + "\n";
@@ -347,6 +366,9 @@ impl Collector {
             (Collector::Api(c), Format::GcpAudit) => {
                 gcp_audit::parse(reader, notes, &mut |event| c.add(event))
             }
+            (Collector::Api(c), Format::K8sAudit) => {
+                k8s_audit::parse_requests(reader, notes, &mut |event| c.add(event))
+            }
             (Collector::Api(c), Format::AzureActivity) => {
                 azure_activity::parse(reader, notes, &mut |event| c.add(event))
             }
@@ -409,24 +431,17 @@ impl Collector {
         subjects: &[String],
         options: &Generate,
     ) -> Result<(Value, Vec<String>)> {
-        if policy.kind() != self.kind() {
-            let fitting: Vec<String> = Policy::value_variants()
-                .iter()
-                .filter(|candidate| candidate.kind() == self.kind())
-                .map(|candidate| candidate.name())
-                .collect();
-            return Err(Error(format!(
-                "--policy {} cannot be written from this log, which leads to: {}",
-                policy.name(),
-                fitting.join(", ")
-            )));
-        }
         match self {
             Collector::Api(c) => {
                 let behavior = c.behavior(subjects);
                 Ok(match policy {
                     Policy::GcpRole => cloud::gcp::policy(&behavior, options.include_denied),
                     Policy::AzureRole => cloud::azure::policy(&behavior, options.max_resources),
+                    Policy::K8sRbac => cloud::kubernetes::policy(
+                        &behavior,
+                        options.include_denied,
+                        options.max_resources,
+                    ),
                     _ => {
                         cloud::aws::policy(&behavior, options.include_denied, options.max_resources)
                     }
@@ -459,6 +474,7 @@ impl Collector {
 /// capture plus an audit log) but not kinds of behaviour. Also returns the
 /// first format read, which decides the default policy, and all of them.
 fn collect(options: &Common, notes: &mut Notes) -> Result<(Collector, Format, BTreeSet<Format>)> {
+    let wanted = options.policy.map(Policy::kind);
     let mut collector: Option<(Format, Collector)> = None;
     let mut formats = BTreeSet::new();
     for input in expand(&options.logs)? {
@@ -474,9 +490,13 @@ fn collect(options: &Common, notes: &mut Notes) -> Result<(Collector, Format, BT
             ));
             continue;
         };
-        let (first, collector) =
-            collector.get_or_insert_with(|| (format, Collector::new(format.kind())));
-        if first.kind() != format.kind() {
+        // A log that can be read more than one way is read the way the
+        // requested policy needs.
+        let kind = wanted
+            .filter(|kind| format.offers(*kind))
+            .unwrap_or(format.kind());
+        let (first, collector) = collector.get_or_insert_with(|| (format, Collector::new(kind)));
+        if collector.kind() != kind {
             return Err(Error(format!(
                 "{} is a {} log, which cannot be combined with the {} log before it; \
                  run petrify once per kind of log",

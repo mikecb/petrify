@@ -10,6 +10,7 @@ lets the application do that and nothing else.
 | Azure Activity Log                                    | Resource Manager operations   | custom role                                                 |
 | Flow logs from AWS, Google Cloud or Azure; flow CSVs  | who connects to whom          | security group, VPC firewall rules, or NSG rules            |
 | Kubernetes API server audit log                       | what was deployed             | ValidatingAdmissionPolicy                                   |
+| Kubernetes API server audit log                       | who called which API          | RBAC roles and bindings                                     |
 | `strace` output, Linux audit records                  | system calls                  | seccomp profile                                             |
 
 ```console
@@ -29,12 +30,12 @@ petrify: wrote IAM policy to policy.json for arn:aws:iam::111122223333:role/orde
 
 ## Status
 
-Version 0.3. How far each path has been tested:
+Version 0.4. How far each path has been tested:
 
 - **Seccomp**: run end to end against a real container runtime.
-- **Kubernetes admission**: run end to end against a real API server (k3s,
-  Kubernetes 1.34): a policy generated from its audit log was applied and
-  then tried with requests it should admit and refuse.
+- **Kubernetes admission and RBAC**: run end to end against a real API server
+  (k3s, Kubernetes 1.34): policies and roles generated from its audit log were
+  applied and then tried with requests they should allow and refuse.
 - **AWS** (IAM policy, security group): fixture logs only.
 - **Google Cloud and Azure**: fixture logs only. Their formats were checked
   against the vendors' documentation, published API definitions and public
@@ -341,6 +342,48 @@ What it does not do:
   the policy can still be cleaned up. Any other change to such an object is
   refused until it conforms.
 
+### RBAC roles from a Kubernetes audit log
+
+The same audit log, read for who called which API rather than what was
+deployed. Ask for it with `--policy k8s-rbac`, on `show` as well as
+`generate`:
+
+```sh
+petrify show audit.log --policy k8s-rbac            # lists the users and service accounts
+petrify generate audit.log --policy k8s-rbac \
+    -s system:serviceaccount:orders:orders-api -o rbac.json
+kubectl apply -f rbac.json
+```
+
+The output is a `Role` and `RoleBinding` in each namespace the subject worked
+in, and a `ClusterRole` and `ClusterRoleBinding` for what it did across the
+cluster: cluster-wide resources, lists across all namespaces, and paths such
+as `/healthz`. The roles add to whatever the subject is already bound to, so
+they constrain nothing until the broader bindings are removed.
+
+- **Objects are named where a name means something.** A rule is limited to
+  the object names observed (`resourceNames`), so a service account seen
+  reading the secret `db-password` can read that secret and no other. This is
+  not done when there are more than `--max-resources` names (default 10), or
+  when any of them looks generated (a pod of a ReplicaSet, a Job of a
+  CronJob), since those names change on the next deploy.
+- Listing or watching secrets is reading all of them. When a role allows
+  that, a note says so.
+- Requests the API server refused are shown but not granted, unless
+  `--include-denied`.
+- A request made by impersonation counts for the impersonated user.
+- The `Metadata` audit level is enough; no objects are needed.
+
+What it cannot see:
+
+- A user in `system:masters` is never checked against RBAC, so roles for one
+  change nothing.
+- Permissions that are checked without a request of their own do not appear:
+  `bind` and `escalate` when creating role bindings and roles, `impersonate`,
+  and `use` of a resource from inside another object.
+- Access granted through a group is recorded against the user. The generated
+  binding names the user.
+
 ### Seccomp profile from strace or audit records
 
 ```sh
@@ -414,7 +457,7 @@ needs is for you to judge.
 
 ```
 src/sources/    one module per log format -> normalised events
-src/cloud/      API calls -> IAM policy (aws), custom role (gcp, azure)
+src/cloud/      API calls -> IAM policy (aws), custom role (gcp, azure), RBAC roles (kubernetes)
 src/network/    flows     -> security group (aws), firewall rules (gcp), NSG rules (azure)
 src/workloads/  workloads -> Kubernetes ValidatingAdmissionPolicy
 src/syscalls.rs syscalls  -> seccomp profile
