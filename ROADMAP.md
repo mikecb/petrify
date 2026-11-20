@@ -7,20 +7,19 @@ roughly the order of value; nothing here is scheduled.
 
 | Log                                  | Policy                   | Tested against                         |
 | ------------------------------------ | ------------------------ | -------------------------------------- |
-| AWS CloudTrail                       | IAM policy               | hand-written fixtures only             |
-| Google Cloud Audit Logs              | IAM custom role          | hand-written fixtures only             |
-| Azure Activity Log                   | custom role              | hand-written fixtures only             |
-| AWS VPC Flow Logs, flow CSV          | security group rules     | hand-written fixtures only             |
-| Google Cloud VPC Flow Logs           | VPC firewall rules       | hand-written fixtures only             |
-| Azure VNet and NSG flow logs         | NSG security rules       | hand-written fixtures only             |
+| AWS CloudTrail                       | IAM policy               | fixtures; public samples read, incl. a real account |
+| Google Cloud Audit Logs              | IAM custom role          | fixtures; public samples read          |
+| Azure Activity Log                   | custom role              | fixtures; public samples read, incl. a real tenant |
+| AWS VPC Flow Logs, flow CSV          | security group rules     | fixtures; public samples read          |
+| Google Cloud VPC Flow Logs           | VPC firewall rules       | fixtures; public samples read          |
+| Azure VNet and NSG flow logs         | NSG security rules       | fixtures; public samples read          |
 | Kubernetes API server audit log      | ValidatingAdmissionPolicy | a real API server (k3s, Kubernetes 1.34) |
 | Kubernetes API server audit log      | RBAC roles and bindings  | a real API server (k3s, Kubernetes 1.34) |
 | `strace`, audit / kernel-log records | seccomp profile          | a real container under Docker and runc |
 
-The seccomp and Kubernetes paths have run end to end. None of the cloud paths
-has yet met a real log or a real account, which is the first thing to fix. The Google Cloud
-and Azure formats were written from the vendors' documentation, API
-definitions and public sample logs.
+The seccomp and Kubernetes paths have run end to end. The cloud paths read
+public sample logs correctly, but no policy they generate has been applied to
+a real account, which is the first thing to fix.
 
 Pull requests are checked on Linux and macOS, and a version tag publishes
 binaries for both once the same checks pass.
@@ -30,16 +29,28 @@ binaries for both once the same checks pass.
 Before adding more breadth, make the current policies ones you can apply
 without reading them line by line.
 
-- **Run against real logs.** Real audit and flow logs from a known application
-  in each cloud, with the generated policy applied and the application
-  exercised. Turn what breaks into fixtures. For Google Cloud and Azure this
+- **Apply a generated policy in each cloud.** Reading public sample logs
+  found and fixed format bugs, but nobody has yet attached a generated policy
+  to a known application and exercised it. For Google Cloud and Azure this
   also means running the commands the README gives for applying the output.
+- **Scope more AWS calls.** In a real administrator's CloudTrail, 197 of 240
+  actions came out on `*`, because only ten services have their resources
+  read. IAM, EC2 and RDS name their targets in the request and are the
+  obvious next three.
+- **Summarise names as well as paths.** Twenty secrets called
+  `retrieve-secret-0` to `-19` stay twenty resources, because summarising
+  only understands `/`.
+- **Split a policy that is too large.** The same administrator's policy was
+  13,796 characters against a limit of 6,144; petrify says so and stops.
 - **IAM actions from the source of truth.** Replace the hand-written
   event-to-action tables with data generated from the AWS Service
   Authorization Reference, the way the syscall tables are generated from
   kernel headers. That also tells petrify which actions exist, which support
   resource-level scoping (so `*` is right, not a gap), and which dependent
-  actions a call needs.
+  actions a call needs. Sample logs show the cost of not having it: event
+  names such as `ssm:OpenControlChannel`, `bedrock:Converse` and
+  `s3:GetStorageLensDashboardDataInternal` pass straight through, and are
+  not what IAM calls those permissions.
 - **Flag what a log cannot show.** When the behaviour implies a permission
   CloudTrail never records (`iam:PassRole` for `RunInstances` or
   `CreateFunction`, `kms:Decrypt` behind an encrypted bucket), say so.
@@ -52,8 +63,6 @@ without reading them line by line.
 - **Confirm the Azure flow tuple reading.** petrify takes a tuple's source to
   be the end that opened the connection, as the documented samples show but
   the documentation does not say.
-- **Flow logs without a header.** A `--fields` option for custom AWS formats
-  delivered to CloudWatch Logs, which carry no header line.
 - **Seccomp with auditd.** Confirm the dry-run loop converges in one round
   when auditd is running, and test against crun and containerd.
 - **Large logs.** CloudTrail files are read whole; stream them. Measure memory

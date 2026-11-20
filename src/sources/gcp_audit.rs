@@ -28,23 +28,28 @@ pub fn parse(
     emit: &mut dyn FnMut(ApiCall),
 ) -> io::Result<()> {
     for document in &json_documents(reader, notes)? {
-        entries(document, emit);
+        entries(document, notes, emit);
     }
     Ok(())
 }
 
-fn entries(document: &Value, emit: &mut dyn FnMut(ApiCall)) {
+fn entries(document: &Value, notes: &mut Notes, emit: &mut dyn FnMut(ApiCall)) {
     if let Some(items) = document.as_array() {
-        items.iter().for_each(|item| entries(item, emit));
+        items.iter().for_each(|item| entries(item, notes, emit));
     } else if let Some(payload) = document
         .get("protoPayload")
         .or_else(|| document.get("protopayload_auditlog"))
+        && calls(payload, emit) == 0
     {
-        calls(payload, emit);
+        notes.add(
+            "skipped an audit entry that records no permission check, \
+             as system events and the completion of long operations do",
+        );
     }
 }
 
-fn calls(payload: &Value, emit: &mut dyn FnMut(ApiCall)) {
+/// Emit each permission check in an entry; returns how many there were.
+fn calls(payload: &Value, emit: &mut dyn FnMut(ApiCall)) -> usize {
     let identity = payload.get("authenticationInfo").unwrap_or(&Value::Null);
     // The email is redacted in some entries, and absent for identities from
     // outside Google, which are named by `principalSubject` instead.
@@ -52,11 +57,13 @@ fn calls(payload: &Value, emit: &mut dyn FnMut(ApiCall)) {
         .or_else(|| text(identity, "principalSubject"))
         .unwrap_or("unknown");
 
+    let mut found = 0;
     let checks = payload.get("authorizationInfo").and_then(Value::as_array);
     for check in checks.into_iter().flatten() {
         let Some(permission) = text(check, "permission") else {
             continue;
         };
+        found += 1;
         let attributes = check.get("resourceAttributes").unwrap_or(&Value::Null);
         let resource = text(check, "resource")
             .or_else(|| text(attributes, "name"))
@@ -70,6 +77,7 @@ fn calls(payload: &Value, emit: &mut dyn FnMut(ApiCall)) {
             denied: check.get("granted").and_then(Value::as_bool) != Some(true),
         });
     }
+    found
 }
 
 #[cfg(test)]
@@ -183,6 +191,7 @@ mod tests {
         let system = json!({"protoPayload": {"methodName": "compute.instances.preempted"}});
         let lines = format!("{sink}\n{row}\n{system}\n{{broken\n");
         let (found, notes) = parse_text(&lines);
-        assert_eq!((found.len(), notes.len()), (2, 1));
+        // One note for the broken line, one for the system event.
+        assert_eq!((found.len(), notes.len()), (2, 2));
     }
 }

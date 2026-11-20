@@ -62,6 +62,11 @@ struct Common {
     #[arg(long, value_name = "CIDR")]
     local: Vec<String>,
 
+    /// AWS flow logs: the fields of a custom format that has no header line,
+    /// in order, as in the flow log's own format string
+    #[arg(long, value_name = "NAMES")]
+    fields: Vec<String>,
+
     /// Policy to write, or whose view of the log to show, when it should not
     /// follow from the log: a flow log can become another cloud's firewall
     /// rules, and a Kubernetes audit log can become RBAC roles
@@ -357,6 +362,7 @@ impl Collector {
         &mut self,
         format: Format,
         reader: &mut dyn BufRead,
+        fields: &[String],
         notes: &mut Notes,
     ) -> io::Result<()> {
         match (self, format) {
@@ -373,7 +379,7 @@ impl Collector {
                 azure_activity::parse(reader, notes, &mut |event| c.add(event))
             }
             (Collector::Network(c), Format::AwsFlow) => {
-                aws_flow::parse(reader, notes, &mut |event| c.add(event))
+                aws_flow::parse(reader, fields, notes, &mut |event| c.add(event))
             }
             (Collector::Network(c), Format::GcpFlow) => {
                 gcp_flow::parse(reader, notes, &mut |event| c.add(event))
@@ -475,6 +481,11 @@ impl Collector {
 /// first format read, which decides the default policy, and all of them.
 fn collect(options: &Common, notes: &mut Notes) -> Result<(Collector, Format, BTreeSet<Format>)> {
     let wanted = options.policy.map(Policy::kind);
+    let fields = if options.fields.is_empty() {
+        Vec::new()
+    } else {
+        aws_flow::field_names(&options.fields).map_err(Error)?
+    };
     let mut collector: Option<(Format, Collector)> = None;
     let mut formats = BTreeSet::new();
     for input in expand(&options.logs)? {
@@ -483,7 +494,10 @@ fn collect(options: &Common, notes: &mut Notes) -> Result<(Collector, Format, BT
             Some(format) => Some(format),
             None => Format::detect(&input.head().map_err(named)?),
         };
-        let Some(format) = detected else {
+        // Fields are only named for a log that has lost its header, which
+        // is also what makes it undetectable.
+        let assumed = (!fields.is_empty()).then_some(Format::AwsFlow);
+        let Some(format) = detected.or(assumed) else {
             notes.add(format!(
                 "{}: unrecognised format, skipped (see --format)",
                 input.name
@@ -507,7 +521,7 @@ fn collect(options: &Common, notes: &mut Notes) -> Result<(Collector, Format, BT
         }
         formats.insert(format);
         collector
-            .feed(format, &mut *input.open().map_err(named)?, notes)
+            .feed(format, &mut *input.open().map_err(named)?, &fields, notes)
             .map_err(named)?;
     }
     match collector {

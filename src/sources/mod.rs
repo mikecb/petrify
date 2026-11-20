@@ -214,6 +214,22 @@ mod tests {
     }
 
     #[test]
+    fn an_azure_event_source_is_not_mistaken_for_cloudtrail() {
+        // The Activity Log as the API returns it has "eventSource" and
+        // "eventName" objects of its own.
+        let azure = r#"[{"authorization": {"action": "Microsoft.Compute/disks/write"},
+            "caller": "a@contoso.com",
+            "eventName": {"value": "EndRequest"}, "eventSource": {"value": "Administrative"},
+            "operationName": {"value": "Microsoft.Compute/disks/write"}}]"#;
+        assert_eq!(Format::detect(azure), Some(Format::AzureActivity));
+        let aws = r#"{"Records": [{"eventSource": "s3.amazonaws.com", "eventName": "GetObject",
+            "awsRegion": "us-east-1"}]}"#;
+        assert_eq!(Format::detect(aws), Some(Format::Cloudtrail));
+        let lookup = r#"{"Events": [{"EventName": "GetObject", "CloudTrailEvent": "{}"}]}"#;
+        assert_eq!(Format::detect(lookup), Some(Format::Cloudtrail));
+    }
+
+    #[test]
     fn json_documents_reads_one_document_or_one_per_line() {
         let read = |text: &str| {
             let mut notes = Notes::default();

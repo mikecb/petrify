@@ -1,1 +1,4 @@
 /target
+
+# Public sample logs kept locally for testing (scripts/fetch_samples.sh)
+/samples
