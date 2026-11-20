@@ -93,6 +93,10 @@ fn calls(record: &Value, emit: &mut dyn FnMut(ApiCall)) {
     if source.starts_with("signin.") {
         return;
     }
+    // Asking who you are is always allowed; no policy grants or denies it.
+    if source == "sts.amazonaws.com" && name == "GetCallerIdentity" {
+        return;
+    }
 
     let service = service(source);
     let params = record.get("requestParameters").unwrap_or(&Value::Null);

@@ -440,6 +440,13 @@ impl Collector {
         match self {
             Collector::Api(c) => {
                 let behavior = c.behavior(subjects);
+                if behavior.granted(options.include_denied).is_empty() {
+                    return Err(Error(
+                        "every call in the log was refused, so there is nothing to grant; \
+                         --include-denied grants what was refused"
+                            .to_string(),
+                    ));
+                }
                 Ok(match policy {
                     Policy::GcpRole => cloud::gcp::policy(&behavior, options.include_denied),
                     Policy::AzureRole => cloud::azure::policy(&behavior, options.max_resources),

@@ -26,6 +26,12 @@ URL = "https://servicereference.us-east-1.amazonaws.com/v1/{0}/{0}.json"
 # hand-written rules in cloudtrail.rs.
 SERVICES = ["ec2", "iam", "rds"]
 
+# The services whose actions are checked for changing permissions: the ones
+# above and the ones cloudtrail.rs has rules for.
+FLAGGED = SERVICES + [
+    "dynamodb", "kms", "lambda", "logs", "s3", "secretsmanager", "sns", "sqs", "ssm", "sts",
+]
+
 # An action that can involve more resource types than this (ec2:CreateTags
 # takes 106) is left on "*" rather than listed type by type.
 MAX_TYPES = 6
@@ -91,8 +97,9 @@ def main() -> None:
     lines += ["        _ => None,", "    }", "}"]
 
     counts = []
+    references = {service: fetch(service) for service in sorted(set(FLAGGED))}
     for service in SERVICES:
-        actions, arns = tables(fetch(service))
+        actions, arns = tables(references[service])
         for name, expected in KNOWN_ACTIONS[service].items():
             if name not in actions or (expected is not None and actions[name] != expected):
                 raise SystemExit(f"{service}:{name} resolved to {actions.get(name)!r}")
@@ -109,7 +116,27 @@ def main() -> None:
         lines += ["    ],", "    arns: &["]
         lines += [f'        ("{name}", "{arns[name]}"),' for name in sorted(arns)]
         lines += ["    ],", "};"]
-    lines.append("")
+
+    # What AWS itself classes as permission management: actions that change
+    # who may do what.
+    managing = sorted(
+        f"{service}:{action['Name']}"
+        for service, reference in references.items()
+        for action in reference["Actions"]
+        if action.get("Annotations", {}).get("Properties", {}).get("IsPermissionManagement")
+    )
+    if "iam:AttachRolePolicy" not in managing or "s3:PutBucketPolicy" not in managing:
+        raise SystemExit("permission management actions are missing the obvious ones")
+    lines += [
+        "",
+        "/// Actions that AWS classes as permission management, as `service:Action`,",
+        "/// sorted. Covers: " + ", ".join(sorted(set(FLAGGED))) + ".",
+        "#[rustfmt::skip]",
+        "pub static PERMISSION_MANAGEMENT: &[&str] = &[",
+    ]
+    lines += [f'    "{action}",' for action in managing]
+    lines += ["];", ""]
+    counts.append(f"{len(managing)} permission management actions")
     OUT.write_text("\n".join(lines))
     print(f"wrote {OUT.relative_to(ROOT)}: " + "; ".join(counts))
 

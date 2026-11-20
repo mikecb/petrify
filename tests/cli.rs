@@ -149,6 +149,32 @@ fn iam_options_change_the_policy() {
 }
 
 #[test]
+fn a_principal_that_was_only_refused_gets_no_empty_policy() {
+    let dir = scratch("refused");
+    let log = dir.join("trail.json");
+    let event = json!({"Records": [{
+        "eventSource": "ec2.amazonaws.com",
+        "eventName": "GetPasswordData",
+        "awsRegion": "us-east-1",
+        "errorCode": "Client.UnauthorizedOperation",
+        "userIdentity": {"type": "IAMUser", "arn": "arn:aws:iam::111122223333:user/probe"},
+    }]});
+    std::fs::write(&log, event.to_string()).unwrap();
+    let path = log.to_str().unwrap();
+
+    let run = petrify(&["show", path]);
+    assert!(run.out.contains("API calls: 0 actions") && run.out.contains("ec2:GetPasswordData"));
+    let run = petrify(&["generate", path]);
+    assert_eq!((run.code, run.out.as_str()), (1, ""));
+    assert!(run.err.contains("every call in the log was refused"));
+    let run = petrify(&["generate", path, "--include-denied"]);
+    assert_eq!(
+        json_of(&run)["Statement"][0]["Action"],
+        "ec2:GetPasswordData"
+    );
+}
+
+#[test]
 fn subject_patterns_select_and_must_match() {
     let log = fixture("cloudtrail.json");
     let run = petrify(&["generate", &log, "-s", "*"]);

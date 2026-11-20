@@ -9,7 +9,7 @@
 
 pub mod auditd;
 pub mod aws_flow;
-mod aws_reference;
+pub(crate) mod aws_reference;
 mod aws_scope;
 pub mod azure_activity;
 pub mod azure_flow;
